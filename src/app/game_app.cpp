@@ -140,7 +140,8 @@ void GameApp::_show_touch() {
     touch.set_scale_share(static_cast<float>(Settings.touch_scale()));
     touch.opacity = static_cast<float>(Settings.number("touch_opacity")) / 100.0f;
     touch.dpad = Settings.text("touch_directions") == "dpad";
-    touch.visible = Settings.touch_enabled() && !settings_view.visible;
+    bool wanted = Settings.touch_enabled() || (Settings.touchscreen_available && !_other_input());
+    touch.visible = wanted && !settings_view.visible;
     if (!touch.visible) touch.reset();
 }
 
@@ -535,6 +536,7 @@ void GameApp::_physics_process() {
     // remake's settings screen (it opens only for the keyboard's keys).
     settings_button.visible = false;
     system_options.touch = touch.visible;
+    system_options.other_input = _other_input();
 #ifdef __ANDROID__
     system_options.keyboard = Pads.has_keyboard();
 #else

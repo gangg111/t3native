@@ -142,6 +142,8 @@ bool SystemOptions::step(GameFlow& g, OptionsScreen& o) {
     bool left = false;
     if (e.kind == Kind::SETTING && lr != 0) {
         Settings->cycle(e.key, lr);
+        // Touch controls off with nothing else to play with would leave no way back: OFF is passed.
+        if (e.key == "touch_controls" && !other_input && Settings->text(e.key) == "off") Settings->cycle(e.key, lr);
         g.sound(OptionsScreen::SOUND_MOVE);
     }
     bool back = (pressed & PadState::SELECT) != 0;

@@ -36,6 +36,7 @@ public:
     SettingsView* view = nullptr;            // its value texts and translations
     bool touch = false;                      // the touch controls are shown (EDIT LAYOUT)
     bool keyboard = false;                   // a keyboard is at hand (its keys)
+    bool other_input = true;                 // a pad or keyboard besides touch: TOUCH CONTROLS may be OFF
     std::function<void()> edit_layout;       // the touch controls' layout edit
     std::function<void()> keyboard_keys;     // the settings screen's key fields
     std::function<void()> closed;            // the page was left (the settings are saved)

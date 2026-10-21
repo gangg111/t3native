@@ -119,6 +119,16 @@ public:
         if (!_connected_pads.report(device, connected)) return;
         Pads.joy_connection(device, connected);
         _joypads = _connected_pads.size();
+        if (flow) _show_touch();   // native: a pad gone with the touch controls off brings them back
+    }
+    // Native: something besides the touch screen to play with (a pad, or a keyboard used): without
+    // one the touch controls stay, whatever the setting says, and SYSTEM OPTION does not offer OFF.
+    bool _other_input() const {
+#ifdef __ANDROID__
+        return _joypads > 0 || Pads.has_keyboard();
+#else
+        return true;
+#endif
     }
     // Back closes the touch layout's edit (as its Done) before it reaches the game.
     void back() override {

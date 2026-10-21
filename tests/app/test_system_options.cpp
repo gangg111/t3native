@@ -89,6 +89,29 @@ T3_TEST(system_options, in_option_mode_with_its_lists) {
     t.expect(o.system_title == "SYSTEM OPTION" && o.system_cursor == 0, "reopened at GRAPHICS");
 }
 
+// Without a pad or keyboard, TOUCH CONTROLS never turns OFF (no way back without touch).
+T3_TEST(system_options, touch_off_needs_another_input) {
+    if (!t.require(t3test::imported("tables/flow.json"))) return;
+    Fixture f(true);
+    OptionsScreen& o = *f.flow->options;
+    for (int i = 0; i < 3; ++i) f.press(PadState::DOWN);
+    f.press(PadState::CROSS);        // SYSTEM OPTION
+    for (int i = 0; i < 3; ++i) f.press(PadState::DOWN);
+    f.press(PadState::CROSS);        // CONTROLS
+    t.expect(o.system_title == "CONTROLS" && o.system_rows[0].label == "TOUCH CONTROLS", "on TOUCH CONTROLS");
+    f.system.other_input = false;
+    // source: settings.h's choices: auto, on, off
+    f.press(PadState::RIGHT);
+    t.expect_equal(f.Settings.text("touch_controls"), std::string("on"), "AUTO -> ON");
+    f.press(PadState::RIGHT);
+    t.expect_equal(f.Settings.text("touch_controls"), std::string("auto"), "ON -> AUTO: OFF passed");
+    f.press(PadState::LEFT);
+    t.expect_equal(f.Settings.text("touch_controls"), std::string("on"), "back: ON, OFF passed");
+    f.system.other_input = true;
+    f.press(PadState::RIGHT);
+    t.expect_equal(f.Settings.text("touch_controls"), std::string("off"), "with a pad: OFF");
+}
+
 T3_TEST(system_options, off_keeps_the_remakes_menu) {
     if (!t.require(t3test::imported("tables/flow.json"))) return;
     Fixture f(false);
