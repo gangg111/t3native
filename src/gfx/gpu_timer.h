@@ -2,8 +2,8 @@
 // Native: the GPU time of whole frames (GL_EXT_disjoint_timer_query's GL_TIME_ELAPSED_EXT) for the
 // performance log. A ring of RING queries, read only once their results are there (the GPU runs a
 // few frames behind; a full ring skips a frame rather than wait); a disjoint period (the GPU's clock
-// changed) drops the results in flight. Made again after a context loss. Android only: the host's
-// desktop GL has no such extension name (begin and end do nothing there).
+// changed) drops the results in flight. Made again after a context loss. On the development host,
+// desktop GL 3.3's timer queries (without the disjoint flag).
 #include <vector>
 
 namespace t3::gfx {
@@ -26,6 +26,7 @@ private:
     bool open_ = false;
     int state_ = 0;            // 0 not looked at, 1 timers, -1 none
     unsigned generation_ = 0;  // the GL context the queries belong to
+    bool desktop_ = false;
 };
 
 }  // namespace t3::gfx

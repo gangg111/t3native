@@ -61,3 +61,21 @@ T3_TEST(perf_log, update_parts) {
     t.expect(line.size() > tail.size() && line.substr(line.size() - tail.size()) == tail,
              "the window's line ends with the parts: " + line);
 }
+
+T3_TEST(perf_log, gpu_passes_and_scene) {
+    PerfLog log;
+    log.frame(0.0, 1.0, 1.0);
+    log.frame(5.0, 1.0, 1.0);
+    log.gpu_ms = {9.0};
+    log.gpu_parts[PerfLog::GPU_SHADOW] = {1.0, 2.0};
+    log.gpu_parts[PerfLog::GPU_SCENE] = {6.0};
+    log.gpu_parts[PerfLog::GPU_2D] = {0.5, 1.5};
+    std::string line = log.take(5.0, 8, "stage=5 arcade");
+    // source: by hand: means shadow (1 + 2) / 2 = 1.50, scene 6.00, post none = 0.00, 2d (0.5 + 1.5) / 2 = 1.00
+    const std::string tail = " shadow/scene/post/2d=1.50/6.00/0.00/1.00ms stage=5 arcade";
+    t.expect(line.size() > tail.size() && line.compare(line.size() - tail.size(), tail.size(), tail) == 0, "passes and scene: " + line);
+    log.frame(10.0, 1.0, 1.0);
+    log.frame(15.0, 1.0, 1.0);
+    std::string next = log.take(15.0, 8);
+    t.expect(next.find("shadow/scene") == std::string::npos, "the passes are the window's only: " + next);
+}

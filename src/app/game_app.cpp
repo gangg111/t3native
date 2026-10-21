@@ -814,7 +814,9 @@ void GameApp::frame(double now) {
     double render_start = Platform::now();
     // The GPU timer's query is the frame's first GL call, which waits for a free buffer of the
     // window: it belongs to the render time.
-    if (measured) gpu_timer.begin();
+    // Every other frame its passes are timed instead (GPU timers do not nest).
+    _gpu_passes = measured && (++_perf_frames & 1) == 0;
+    if (measured && !_gpu_passes) gpu_timer.begin();
     _render();
     if (!measured) {
         perf_log.reset();
@@ -822,6 +824,7 @@ void GameApp::frame(double now) {
         return;
     }
     gpu_timer.end();
+    _gpu_pass(-1);
     // Native: the performance log: this frame's update (steps, views) and render times, the GPU
     // times back so far; a long frame's line at once, and a line every PerfLog::WINDOW seconds.
     double elapsed = now - _start_time;
@@ -836,8 +839,24 @@ void GameApp::frame(double now) {
     }
     _perf_note.clear();
     gpu_timer.collect(perf_log.gpu_ms);
-    std::string line = perf_log.take(elapsed, static_cast<int>(flow->state));
+    for (int i = 0; i < PerfLog::GPU_PARTS; ++i) gpu_passes[i].collect(perf_log.gpu_parts[i]);
+    // What the fight draws: its stage and the version (the arcade's scenes and models cost more).
+    std::string scene;
+    if (fight_view != nullptr && fight_view->visible) {
+        scene = "stage=" + gd::str(flow->fight->stage) + (_arcade_version() ? " arcade" : " console");
+    }
+    std::string line = perf_log.take(elapsed, static_cast<int>(flow->state), scene);
     if (!line.empty()) Platform::perf_line(line);
+}
+
+// Native: the GPU timer of pass `pass` (PerfLog::GpuPart) from here on, the previous one's ended
+// (-1: none); only in the frames timed in passes.
+void GameApp::_gpu_pass(int pass) {
+    if (_gpu_pass_open >= 0) gpu_passes[_gpu_pass_open].end();
+    _gpu_pass_open = -1;
+    if (!_gpu_passes || pass < 0) return;
+    gpu_passes[pass].begin();
+    _gpu_pass_open = pass;
 }
 
 // Native: what this frame did that may take long (the performance log's spike lines).
@@ -1448,11 +1467,13 @@ void GameApp::_render() {
     }
     if (scene != nullptr && width_ > 0 && height_ > 0) {
         _ensure_renderer();
+        renderer3d->on_pass = [this](int pass) { _gpu_pass(pass); };
         renderer3d->render(*scene, *camera, width_, height_, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width_, height_);
     }
     gfx::Vec2 window(static_cast<float>(width_), static_cast<float>(height_));
+    _gpu_pass(PerfLog::GPU_2D);
     canvas->begin(width_, height_);
     // CanvasLayer 1, in game.gd's order: bars, hud, mode_hud, pause_view, practice_view,
     // move_list_view, attract_screen, then the screens.

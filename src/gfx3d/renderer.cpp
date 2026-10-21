@@ -929,6 +929,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
     };
 
     if (sun >= 0) {
+        if (on_pass) on_pass(PASS_SHADOW);
         const DirectionalLight3D& l = *dirs[sun].node;
         g.ensure_shadow(settings_.shadow_size);
         fade = std::min(l.directional_shadow_max_distance, camera.far);
@@ -1005,6 +1006,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
     }
 
     // ---- colour ----
+    if (on_pass) on_pass(PASS_SCENE);
     glBindFramebuffer(GL_FRAMEBUFFER, g.msaa_fbo);
     glViewport(0, 0, iw, ih);
     glClearColor(bg.x, bg.y, bg.z, 1.0f);
@@ -1058,6 +1060,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
     glBindVertexArray(0);
 
     // ---- resolve and encode ----
+    if (on_pass) on_pass(PASS_POST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, g.msaa_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g.resolve_fbo);
     glBlitFramebuffer(0, 0, iw, ih, 0, 0, iw, ih, GL_COLOR_BUFFER_BIT, GL_NEAREST);

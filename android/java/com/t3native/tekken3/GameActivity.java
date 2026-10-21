@@ -191,7 +191,8 @@ public class GameActivity extends NativeActivity {
         String head = "t3native performance log: " + Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE
                 + ", display " + getWindowManager().getDefaultDisplay().getRefreshRate() + " Hz\n"
                 + "frame = median/longest interval, jank = intervals over 1.5 x the median, cpu = mean/95%/longest,"
-                + " gpu = mean/longest, battery in C, headroom 1.0 = throttling\n";
+                + " gpu = mean/longest, shadow/scene/post/2d = the GPU per pass (means, every other frame),"
+                + " stage = the fight's stage and version, battery in C, headroom 1.0 = throttling\n";
         out.write(head.getBytes(StandardCharsets.UTF_8));
         return out;
     }

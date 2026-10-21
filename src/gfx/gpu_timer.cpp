@@ -8,6 +8,8 @@
 
 #ifdef __ANDROID__
 #include <EGL/egl.h>
+#elif defined(_WIN32)
+#include <windows.h>
 #endif
 
 namespace t3::gfx {
@@ -38,6 +40,15 @@ bool GpuTimer::_ready() {
     GLint disjoint = 0;
     glGetIntegerv(GPU_DISJOINT, &disjoint);   // clears the flag
     state_ = 1;
+#elif defined(_WIN32)
+    // The development host: desktop GL 3.3's own timer queries (no disjoint flag there).
+    const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    if (version == nullptr || std::strncmp(version, "OpenGL ES", 9) == 0 || version[0] < '3') return false;
+    if (g_result == nullptr) g_result = reinterpret_cast<QueryObjectUi64>(wglGetProcAddress("glGetQueryObjectui64v"));
+    if (g_result == nullptr) return false;
+    glGenQueries(RING, ids_);
+    desktop_ = true;
+    state_ = 1;
 #endif
     return state_ > 0;
 }
@@ -59,7 +70,7 @@ void GpuTimer::end() {
 void GpuTimer::collect(std::vector<double>& out) {
     if (!_ready()) return;
     GLint disjoint = 0;
-    glGetIntegerv(GPU_DISJOINT, &disjoint);
+    if (!desktop_) glGetIntegerv(GPU_DISJOINT, &disjoint);
     // The oldest first: from the slot after the newest round to it.
     for (int k = 0; k < RING; ++k) {
         int i = (next_ + k) % RING;

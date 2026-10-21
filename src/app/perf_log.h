@@ -25,6 +25,12 @@ public:
     static constexpr double SPIKE_MS = 20.0;       // a frame this long is reported on its own
 
     std::vector<double> gpu_ms;                    // the window's GPU times (GpuTimer::collect)
+    // The GPU per pass, from the frames timed in passes (every other frame: GPU timers do not nest):
+    // the sun's shadow, the 3D scene with its sky, the resolve, glow and encode, the 2D screens.
+    // The line adds "shadow/scene/post/2d=a/b/c/dms" (means).
+    static constexpr int GPU_PARTS = 4;
+    enum GpuPart { GPU_SHADOW, GPU_SCENE, GPU_POST, GPU_2D };
+    std::vector<double> gpu_parts[GPU_PARTS];
 
     // One frame at `now` (seconds) that took `update_ms` + `render_ms` on the game thread.
     void frame(double now, double update_ms, double render_ms);
@@ -34,7 +40,8 @@ public:
     // This frame's parts as " name=ms ..." (for a spike line), then forgotten for the next frame.
     std::string frame_parts();
     // The window's line once WINDOW seconds have passed since it began, else ""; a new window then.
-    std::string take(double now, int state);
+    // `scene` (what is drawn, "stage=5 arcade") ends it.
+    std::string take(double now, int state, const std::string& scene = "");
     // A long frame's own line: "spike t=12.3s 203.0ms update=200.1 render=2.9 state=8 fight view".
     static std::string spike(double now, double update_ms, double render_ms, int state, const std::string& note);
     // Forgets the window (the log turned off, the app paused): the next frame starts a new one.

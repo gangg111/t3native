@@ -5,6 +5,7 @@
 // included), the transparent pass sorted back to front, into a linear multisampled buffer, resolved
 // and encoded to sRGB (the linear tone mapper) into the target framebuffer. The 2D canvas draws over
 // it afterwards.
+#include <functional>
 #include <memory>
 
 #include "gfx3d/nodes.h"
@@ -36,6 +37,11 @@ public:
 
     // The GL context was lost: every GL object is forgotten and made again on the next render.
     static void graphics_lost();
+
+    // Native: told as each pass of `render` begins (the performance log's GPU timers per pass):
+    // the sun's shadow (when there is one), the scene with its sky, the resolve, glow and encode.
+    enum Pass { PASS_SHADOW, PASS_SCENE, PASS_POST };
+    std::function<void(int)> on_pass;
 
     struct Stats {
         int draws = 0, shadow_draws = 0, programs_failed = 0;

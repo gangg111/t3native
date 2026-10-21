@@ -55,7 +55,7 @@ double PerfLog::percentile(std::vector<double> v, double share) {
     return v[std::clamp<size_t>(rank, 1, v.size()) - 1];
 }
 
-std::string PerfLog::take(double now, int state) {
+std::string PerfLog::take(double now, int state, const std::string& scene) {
     if (start_ < 0.0 || now - start_ < WINDOW || update_ms_.empty()) return "";
     double seconds = now - start_;
     double fps = static_cast<double>(intervals_ms_.size()) / std::max(seconds, 1e-9);
@@ -83,6 +83,19 @@ std::string PerfLog::take(double now, int state) {
         out += item;
     }
     parts_.clear();
+    bool passes = false;
+    for (const std::vector<double>& v : gpu_parts) passes = passes || !v.empty();
+    if (passes) {
+        double m[GPU_PARTS];
+        for (int i = 0; i < GPU_PARTS; ++i) {
+            const std::vector<double>& v = gpu_parts[i];
+            m[i] = v.empty() ? 0.0 : std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
+        }
+        std::snprintf(item, sizeof item, " shadow/scene/post/2d=%.2f/%.2f/%.2f/%.2fms", m[0], m[1], m[2], m[3]);
+        out += item;
+    }
+    if (!scene.empty()) out += " " + scene;
+    for (std::vector<double>& v : gpu_parts) v.clear();
     // A new window from this frame on.
     start_ = now;
     update_ms_.clear();
@@ -101,6 +114,7 @@ void PerfLog::reset() {
     render_ms_.clear();
     intervals_ms_.clear();
     gpu_ms.clear();
+    for (std::vector<double>& v : gpu_parts) v.clear();
 }
 
 }  // namespace t3

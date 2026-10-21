@@ -174,6 +174,7 @@ public:
     SystemOptions system_options;   // native: the settings as OPTION MODE's SYSTEM OPTION
     PerfLog perf_log;               // native: the performance log (setting perf_log)
     gfx::GpuTimer gpu_timer;
+    gfx::GpuTimer gpu_passes[PerfLog::GPU_PARTS];   // native: the performance log's GPU per pass
     // The 60 Hz steps due `elapsed` seconds after the first frame (that one runs step 1). The step
     // boundaries sit a quarter step after the display's refreshes: at 60 and 120 Hz the refreshes
     // fall exactly on them, and the clock's jitter (about a millisecond) gave a refresh no step and
@@ -272,6 +273,10 @@ private:
     // Native: VERSION on ARCADE (stage_backdrops): the views draw the arcade's models and stages.
     bool _arcade_version() { return Settings.text("stage_backdrops") == "arcade"; }
     void _perf(const std::string& what);
+    void _gpu_pass(int pass);
+    bool _gpu_passes = false;      // this frame's passes are timed (every other measured frame)
+    int _gpu_pass_open = -1;
+    uint64_t _perf_frames = 0;
     gd::Ref<GameFlow> _make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on);
     void _map_blocks();
     void _record(uint8_t kind, int32_t value, std::vector<uint8_t> bytes = {});
