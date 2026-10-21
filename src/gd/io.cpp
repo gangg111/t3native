@@ -1,7 +1,10 @@
 #include "gd/io.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <utility>
 
 namespace gd {
 
@@ -66,9 +69,15 @@ bool ends_with(const std::string& s, const std::string& suffix) {
 
 namespace {
 
+// Canonical Huffman codes (RFC 1951 3.2.2) with a lookup table for the codes up to FAST bits
+// (indexed by the next FAST bits of the stream, which hold a code bit-reversed); longer codes take
+// the counting walk.
+constexpr int FAST = 10;
+
 struct Huffman {
     std::array<uint16_t, 16> count{};   // codes per length
     std::array<uint16_t, 288> symbol{};  // symbols ordered by code
+    std::array<uint16_t, 1 << FAST> fast{};   // (length << 9) | symbol, 0: a longer code
 };
 
 class Inflater {
@@ -79,30 +88,43 @@ public:
         pos_ = at;
         int last;
         do {
-            last = bits(1);
-            int type = bits(2);
+            last = static_cast<int>(bits(1));
+            int type = static_cast<int>(bits(2));
             if (type == 0) stored();
             else if (type == 1) fixed();
             else if (type == 2) dynamic();
             else fail("inflate: invalid block type");
         } while (!last);
-        return pos_;   // the byte after the deflate stream (partial byte dropped)
+        // The byte after the deflate stream (partial byte dropped): the whole bytes still buffered
+        // are given back.
+        return pos_ - static_cast<size_t>(bitcnt_ >> 3);
     }
 
 private:
-    int bits(int need) {
-        int v = bitbuf_;
-        while (bitcnt_ < need) {
-            if (pos_ >= size_) fail("inflate: unexpected end of data");
-            v |= static_cast<int>(src_[pos_++]) << bitcnt_;
+    // Whole bytes into the 64-bit buffer while the input lasts.
+    void refill() {
+        while (bitcnt_ <= 56 && pos_ < size_) {
+            bitbuf_ |= static_cast<uint64_t>(src_[pos_++]) << bitcnt_;
             bitcnt_ += 8;
         }
-        bitbuf_ = v >> need;
+    }
+
+    uint32_t bits(int need) {
+        if (bitcnt_ < need) {
+            refill();
+            if (bitcnt_ < need) fail("inflate: unexpected end of data");
+        }
+        uint32_t v = static_cast<uint32_t>(bitbuf_ & ((uint64_t{1} << need) - 1));
+        bitbuf_ >>= need;
         bitcnt_ -= need;
-        return v & ((1 << need) - 1);
+        return v;
     }
 
     void stored() {
+        // To the byte boundary, then the buffered whole bytes back to the input.
+        bitbuf_ >>= (bitcnt_ & 7);
+        bitcnt_ -= (bitcnt_ & 7);
+        pos_ -= static_cast<size_t>(bitcnt_ >> 3);
         bitbuf_ = 0;
         bitcnt_ = 0;
         if (pos_ + 4 > size_) fail("inflate: truncated stored block");
@@ -117,18 +139,43 @@ private:
 
     static void build(Huffman& h, const uint8_t* lengths, int n) {
         h.count.fill(0);
+        h.fast.fill(0);
         for (int s = 0; s < n; ++s) h.count[lengths[s]]++;
         h.count[0] = 0;
         std::array<uint16_t, 16> offs{};
         for (int len = 1; len < 16; ++len) offs[len] = static_cast<uint16_t>(offs[len - 1] + h.count[len - 1]);
         for (int s = 0; s < n; ++s)
             if (lengths[s]) h.symbol[offs[lengths[s]]++] = static_cast<uint16_t>(s);
+        // The codes themselves (3.2.2's next_code), bit-reversed into the table.
+        std::array<uint32_t, 16> next{};
+        uint32_t code = 0;
+        for (int len = 1; len < 16; ++len) {
+            code = (code + h.count[len - 1]) << 1;
+            next[len] = code;
+        }
+        for (int s = 0; s < n; ++s) {
+            int len = lengths[s];
+            if (len == 0 || len > FAST) continue;
+            uint32_t c = next[len]++;
+            uint32_t rev = 0;
+            for (int k = 0; k < len; ++k) rev |= ((c >> k) & 1u) << (len - 1 - k);
+            for (uint32_t i = rev; i < (1u << FAST); i += 1u << len) h.fast[i] = static_cast<uint16_t>((len << 9) | s);
+        }
     }
 
     int decode(const Huffman& h) {
+        if (bitcnt_ < 15) refill();
+        uint16_t e = h.fast[bitbuf_ & ((1u << FAST) - 1)];
+        int len = e >> 9;
+        if (e != 0 && len <= bitcnt_) {
+            bitbuf_ >>= len;
+            bitcnt_ -= len;
+            return e & 0x1FF;
+        }
+        // A longer code (or the stream's last bits): one bit at a time.
         int code = 0, first = 0, index = 0;
-        for (int len = 1; len < 16; ++len) {
-            code |= bits(1);
+        for (len = 1; len < 16; ++len) {
+            code |= static_cast<int>(bits(1));
             int count = h.count[len];
             if (code - count < first) return h.symbol[index + (code - first)];
             index += count;
@@ -160,30 +207,39 @@ private:
             if (ds >= 30) fail("inflate: invalid distance symbol");
             size_t d = dist_base[ds] + bits(dist_extra[ds]);
             if (d > out_.size()) fail("inflate: distance too far back");
-            size_t from = out_.size() - d;
-            for (size_t k = 0; k < len; ++k) out_.push_back(out_[from + k]);
+            size_t at = out_.size();
+            out_.resize(at + len);
+            uint8_t* o = out_.data();
+            if (d >= len) {
+                std::memcpy(o + at, o + at - d, len);
+            } else {
+                for (size_t k = 0; k < len; ++k) o[at + k] = o[at + k - d];   // overlapping: byte by byte
+            }
         }
     }
 
     void fixed() {
-        uint8_t lengths[288 + 30];
-        int s = 0;
-        for (; s < 144; ++s) lengths[s] = 8;
-        for (; s < 256; ++s) lengths[s] = 9;
-        for (; s < 280; ++s) lengths[s] = 7;
-        for (; s < 288; ++s) lengths[s] = 8;
-        Huffman lit, dist;
-        build(lit, lengths, 288);
-        for (s = 0; s < 30; ++s) lengths[s] = 5;
-        build(dist, lengths, 30);
-        codes(lit, dist);
+        static const std::pair<Huffman, Huffman> tables = [] {
+            uint8_t lengths[288];
+            int s = 0;
+            for (; s < 144; ++s) lengths[s] = 8;
+            for (; s < 256; ++s) lengths[s] = 9;
+            for (; s < 280; ++s) lengths[s] = 7;
+            for (; s < 288; ++s) lengths[s] = 8;
+            std::pair<Huffman, Huffman> t;
+            build(t.first, lengths, 288);
+            for (s = 0; s < 30; ++s) lengths[s] = 5;
+            build(t.second, lengths, 30);
+            return t;
+        }();
+        codes(tables.first, tables.second);
     }
 
     void dynamic() {
         static const uint8_t order[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
-        int nlen = bits(5) + 257;
-        int ndist = bits(5) + 1;
-        int ncode = bits(4) + 4;
+        int nlen = static_cast<int>(bits(5)) + 257;
+        int ndist = static_cast<int>(bits(5)) + 1;
+        int ncode = static_cast<int>(bits(4)) + 4;
         if (nlen > 286 || ndist > 30) fail("inflate: bad code counts");
         uint8_t lengths[320] = {};
         for (int k = 0; k < ncode; ++k) lengths[order[k]] = static_cast<uint8_t>(bits(3));
@@ -198,9 +254,9 @@ private:
             if (sym == 16) {
                 if (k == 0) fail("inflate: repeat with no first length");
                 len = lengths[k - 1];
-                repeat = 3 + bits(2);
-            } else if (sym == 17) repeat = 3 + bits(3);
-            else repeat = 11 + bits(7);
+                repeat = 3 + static_cast<int>(bits(2));
+            } else if (sym == 17) repeat = 3 + static_cast<int>(bits(3));
+            else repeat = 11 + static_cast<int>(bits(7));
             if (k + repeat > nlen + ndist) fail("inflate: too many lengths");
             while (repeat--) lengths[k++] = len;
         }
@@ -215,22 +271,35 @@ private:
     size_t size_;
     std::vector<uint8_t>& out_;
     size_t pos_ = 0;
-    int bitbuf_ = 0;
+    uint64_t bitbuf_ = 0;
     int bitcnt_ = 0;
 };
 
+// CRC-32 (IEEE), eight bytes a step (slicing by 8).
 uint32_t crc32(const std::vector<uint8_t>& data) {
-    static std::array<uint32_t, 256> table = [] {
-        std::array<uint32_t, 256> t{};
+    static const auto tables = [] {
+        std::array<std::array<uint32_t, 256>, 8> t{};
         for (uint32_t n = 0; n < 256; ++n) {
             uint32_t c = n;
             for (int k = 0; k < 8; ++k) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-            t[n] = c;
+            t[0][n] = c;
         }
+        for (uint32_t n = 0; n < 256; ++n)
+            for (int k = 1; k < 8; ++k) t[k][n] = (t[k - 1][n] >> 8) ^ t[0][t[k - 1][n] & 0xFF];
         return t;
     }();
     uint32_t c = 0xFFFFFFFFu;
-    for (uint8_t b : data) c = table[(c ^ b) & 0xFF] ^ (c >> 8);
+    const uint8_t* p = data.data();
+    size_t n = data.size();
+    while (n >= 8) {
+        uint32_t lo = c ^ (p[0] | (p[1] << 8) | (p[2] << 16) | (static_cast<uint32_t>(p[3]) << 24));
+        uint32_t hi = p[4] | (p[5] << 8) | (p[6] << 16) | (static_cast<uint32_t>(p[7]) << 24);
+        c = tables[7][lo & 0xFF] ^ tables[6][(lo >> 8) & 0xFF] ^ tables[5][(lo >> 16) & 0xFF] ^ tables[4][lo >> 24] ^
+            tables[3][hi & 0xFF] ^ tables[2][(hi >> 8) & 0xFF] ^ tables[1][(hi >> 16) & 0xFF] ^ tables[0][hi >> 24];
+        p += 8;
+        n -= 8;
+    }
+    while (n--) c = tables[0][(c ^ *p++) & 0xFF] ^ (c >> 8);
     return c ^ 0xFFFFFFFFu;
 }
 
@@ -248,6 +317,9 @@ PBytes gunzip(const PBytes& data) {
     if (flags & 2) at += 2;
     if (at >= n) fail("gunzip: truncated header");
     PBytes out;
+    // The trailer's size (mod 2^32) as a first guess of the output's.
+    uint32_t hint = p[n - 4] | (p[n - 3] << 8) | (p[n - 2] << 16) | (static_cast<uint32_t>(p[n - 1]) << 24);
+    out.vec().reserve(std::min<size_t>(hint, size_t{1} << 30));
     size_t end = Inflater(p, n, out.vec()).run(at);
     if (end + 8 > n) fail("gunzip: missing trailer");
     uint32_t crc = p[end] | (p[end + 1] << 8) | (p[end + 2] << 16) | (static_cast<uint32_t>(p[end + 3]) << 24);
@@ -256,18 +328,28 @@ PBytes gunzip(const PBytes& data) {
     return out;
 }
 
-PBytes unzlib(const PBytes& data) {
+PBytes unzlib(const PBytes& data, size_t size_hint) {
     const uint8_t* p = data.data();
     size_t n = static_cast<size_t>(data.size());
     if (n < 6 || (p[0] & 0x0F) != 8 || ((p[0] << 8) | p[1]) % 31 != 0) fail("unzlib: not a zlib stream");
     if (p[1] & 0x20) fail("unzlib: preset dictionary not supported");
     PBytes out;
+    if (size_hint > 0) out.vec().reserve(std::min<size_t>(size_hint, size_t{1} << 30));
     size_t end = Inflater(p, n, out.vec()).run(2);
     if (end + 4 > n) fail("unzlib: missing Adler-32");
+    // Adler-32 with the modulo taken every 5552 bytes (zlib's NMAX: the sums cannot overflow 32 bits).
     uint32_t a = 1, b = 0;
-    for (uint8_t byte : out.vec()) {
-        a = (a + byte) % 65521;
-        b = (b + a) % 65521;
+    const uint8_t* q = out.vec().data();
+    size_t left = out.vec().size();
+    while (left > 0) {
+        size_t chunk = std::min<size_t>(left, 5552);
+        left -= chunk;
+        while (chunk--) {
+            a += *q++;
+            b += a;
+        }
+        a %= 65521;
+        b %= 65521;
     }
     uint32_t want = (static_cast<uint32_t>(p[end]) << 24) | (p[end + 1] << 16) | (p[end + 2] << 8) | p[end + 3];
     if (((b << 16) | a) != want) fail("unzlib: Adler-32 mismatch");

@@ -1,6 +1,7 @@
 #include "gfx3d/shader_program.h"
 #include "gfx/texture.h"
 
+#include <cstdio>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
@@ -275,6 +276,11 @@ std::vector<std::string>& shader_errors() {
     return errors;
 }
 
+std::string& program_cache_dir() {
+    static std::string dir;
+    return dir;
+}
+
 namespace {
 
 void note_shader_error(const std::string& message) {
@@ -313,26 +319,101 @@ unsigned compile_stage(unsigned type, const std::string& text, const std::string
     return sh;
 }
 
+// ---- the programs' binaries (program_cache_dir)
+
+// The cache file of a program: its sources and the driver (another GPU or driver version makes
+// another name; a binary the driver refuses all the same is compiled again).
+std::string cache_path(const GlslPair& glsl) {
+    if (program_cache_dir().empty()) return "";
+    uint64_t h = 0xCBF29CE484222325ULL;   // FNV-1a
+    auto mix = [&](const std::string& s) {
+        for (unsigned char c : s) {
+            h ^= c;
+            h *= 0x100000001B3ULL;
+        }
+        h ^= 0xFF;
+        h *= 0x100000001B3ULL;
+    };
+    auto text = [](GLenum what) {
+        const GLubyte* s = glGetString(what);
+        return s ? std::string(reinterpret_cast<const char*>(s)) : std::string();
+    };
+    mix(glsl.vertex);
+    mix(glsl.fragment);
+    mix(text(GL_RENDERER));
+    mix(text(GL_VERSION));
+    char name[32];
+    std::snprintf(name, sizeof name, "%016llx.bin", static_cast<unsigned long long>(h));
+    return program_cache_dir() + "/" + name;
+}
+
+// The program from its binary; false (nothing linked) when there is none or the driver refuses it.
+bool load_binary(unsigned id, const std::string& path) {
+    if (path.empty()) return false;
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::vector<uint8_t> data;
+    uint8_t buffer[16384];
+    size_t got;
+    while ((got = std::fread(buffer, 1, sizeof buffer, f)) > 0) data.insert(data.end(), buffer, buffer + got);
+    std::fclose(f);
+    if (data.size() <= 4) return false;
+    uint32_t format = data[0] | (data[1] << 8) | (data[2] << 16) | (static_cast<uint32_t>(data[3]) << 24);
+    glProgramBinary(id, format, data.data() + 4, static_cast<GLsizei>(data.size() - 4));
+    int ok = 0;
+    glGetProgramiv(id, GL_LINK_STATUS, &ok);
+    return ok != 0;
+}
+
+void save_binary(unsigned id, const std::string& path) {
+    if (path.empty()) return;
+    int length = 0;
+    glGetProgramiv(id, GL_PROGRAM_BINARY_LENGTH, &length);
+    if (length <= 0) return;
+    std::vector<uint8_t> data(static_cast<size_t>(length) + 4);
+    GLenum format = 0;
+    GLsizei written = 0;
+    glGetProgramBinary(id, length, &written, &format, data.data() + 4);
+    if (written <= 0) return;
+    for (int k = 0; k < 4; ++k) data[static_cast<size_t>(k)] = static_cast<uint8_t>(format >> (8 * k));
+    std::string temporary = path + ".tmp";
+    std::FILE* f = std::fopen(temporary.c_str(), "wb");
+    if (!f) return;
+    bool whole = std::fwrite(data.data(), 1, static_cast<size_t>(written) + 4, f) == static_cast<size_t>(written) + 4;
+    whole = std::fclose(f) == 0 && whole;
+    if (whole) std::rename(temporary.c_str(), path.c_str());
+    else std::remove(temporary.c_str());
+}
+
 std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& name) {
     GlslPair glsl = compose_glsl(shader, pass);
-    unsigned vs = compile_stage(GL_VERTEX_SHADER, glsl.vertex, name);
-    unsigned fs = vs ? compile_stage(GL_FRAGMENT_SHADER, glsl.fragment, name) : 0;
-    if (!vs || !fs) {
-        if (vs) glDeleteShader(vs);
-        return nullptr;
-    }
     auto p = std::make_unique<Program>();
     p->name = name + (pass == Pass::DEPTH ? " [depth]" : " [colour]");
     p->generation = gl_generation();
     p->id = glCreateProgram();
-    glAttachShader(p->id, vs);
-    glAttachShader(p->id, fs);
-    gfx::gl_programs() += 1;
-    glLinkProgram(p->id);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    int ok = 0;
-    glGetProgramiv(p->id, GL_LINK_STATUS, &ok);
+    std::string cached = cache_path(glsl);
+    int ok = load_binary(p->id, cached) ? 1 : 0;
+    if (!ok) {
+        // A program refused from its binary is made again from its sources.
+        glDeleteProgram(p->id);
+        p->id = glCreateProgram();
+        unsigned vs = compile_stage(GL_VERTEX_SHADER, glsl.vertex, name);
+        unsigned fs = vs ? compile_stage(GL_FRAGMENT_SHADER, glsl.fragment, name) : 0;
+        if (!vs || !fs) {
+            if (vs) glDeleteShader(vs);
+            glDeleteProgram(p->id);
+            return nullptr;
+        }
+        glAttachShader(p->id, vs);
+        glAttachShader(p->id, fs);
+        if (!cached.empty()) glProgramParameteri(p->id, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+        gfx::gl_programs() += 1;
+        glLinkProgram(p->id);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        glGetProgramiv(p->id, GL_LINK_STATUS, &ok);
+        if (ok) save_binary(p->id, cached);
+    }
     if (!ok) {
         char log[4096];
         glGetProgramInfoLog(p->id, sizeof log, nullptr, log);

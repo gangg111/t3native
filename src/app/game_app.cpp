@@ -78,6 +78,10 @@ bool GameApp::start(const std::string& data_root, const std::string& user_dir) {
     if (!user_dir_.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(std::filesystem::path(user_dir_), ec);
+        // Native: the linked shaders' binaries, so a later run need not compile them again.
+        std::string shaders = gd::path_join(user_dir_, "shaders");
+        std::filesystem::create_directories(std::filesystem::path(shaders), ec);
+        if (!ec) gfx3d::program_cache_dir() = shaders;
     }
     // The autoload Settings (its _ready, before the game's), with the engine's parts it reaches.
     gd::Json manifest = JsonFile::read(gd::path_join(root, "manifest.json"));
@@ -778,9 +782,11 @@ void GameApp::frame(double now) {
     // (step done - 1 ran at _start_time + (done - 1) / 60), 0 to 1.
     _fraction = std::clamp((now - _start_time) * 60.0 + TICK_PHASE - static_cast<double>(done - 1), 0.0, 1.0);
     bool measured = Settings.flag("perf_log") && !_replay;
-    if (measured) gpu_timer.begin();
     _process();
     double render_start = Platform::now();
+    // The GPU timer's query is the frame's first GL call, which waits for a free buffer of the
+    // window: it belongs to the render time.
+    if (measured) gpu_timer.begin();
     _render();
     if (!measured) {
         perf_log.reset();

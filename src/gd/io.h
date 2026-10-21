@@ -21,7 +21,8 @@ PBytes read_file(const std::string& path);
 // A whole gzip member (RFC 1952) inflated; fails on corrupt data or a CRC mismatch.
 PBytes gunzip(const PBytes& data);
 // A zlib stream (RFC 1950, Python's zlib.compress; Godot COMPRESSION_DEFLATE) inflated, Adler-32 checked.
-PBytes unzlib(const PBytes& data);
+// `size_hint`: the inflated size when the caller knows it (the output is reserved once).
+PBytes unzlib(const PBytes& data, size_t size_hint = 0);
 std::string path_join(const std::string& a, const std::string& b);
 bool ends_with(const std::string& s, const std::string& suffix);
 

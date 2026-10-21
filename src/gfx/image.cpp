@@ -79,9 +79,9 @@ Image decode_png(const gd::PBytes& bytes, std::string* error) {
     int channels = colour == 0 ? 1 : colour == 2 ? 3 : colour == 3 ? 1 : colour == 4 ? 2 : colour == 6 ? 4 : 0;
     if (!channels || (depth != 8 && !(colour == 3 && (depth == 1 || depth == 2 || depth == 4))))
         return fail(error, "unsupported PNG format"), out;
-    gd::PBytes raw = gd::unzlib(idat);
     size_t stride = (static_cast<size_t>(width) * channels * depth + 7) / 8;
     size_t bpp = std::max<size_t>(1, static_cast<size_t>(channels) * depth / 8);
+    gd::PBytes raw = gd::unzlib(idat, (stride + 1) * static_cast<size_t>(height));
     if (static_cast<size_t>(raw.size()) < (stride + 1) * height) return fail(error, "short image data"), out;
     std::vector<uint8_t> prev(stride, 0), row(stride);
     out.width = width;
@@ -90,19 +90,36 @@ Image decode_png(const gd::PBytes& bytes, std::string* error) {
     const uint8_t* src = raw.data();
     for (int y = 0; y < height; ++y) {
         uint8_t filter = *src++;
-        for (size_t i = 0; i < stride; ++i) {
-            int a = i >= bpp ? row[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
-            uint8_t x = src[i];
-            switch (filter) {
-                case 0: row[i] = x; break;
-                case 1: row[i] = static_cast<uint8_t>(x + a); break;
-                case 2: row[i] = static_cast<uint8_t>(x + b); break;
-                case 3: row[i] = static_cast<uint8_t>(x + ((a + b) >> 1)); break;
-                case 4: row[i] = static_cast<uint8_t>(x + paeth(a, b, c)); break;
-                default: return fail(error, "bad filter"), Image();
-            }
+        // Each filter's own loop (the first bpp bytes have no left neighbour: a = c = 0).
+        uint8_t* r = row.data();
+        const uint8_t* up = prev.data();
+        switch (filter) {
+            case 0: std::memcpy(r, src, stride); break;
+            case 1:
+                for (size_t i = 0; i < stride; ++i) r[i] = static_cast<uint8_t>(src[i] + (i >= bpp ? r[i - bpp] : 0));
+                break;
+            case 2:
+                for (size_t i = 0; i < stride; ++i) r[i] = static_cast<uint8_t>(src[i] + up[i]);
+                break;
+            case 3:
+                for (size_t i = 0; i < stride; ++i) {
+                    int a = i >= bpp ? r[i - bpp] : 0;
+                    r[i] = static_cast<uint8_t>(src[i] + ((a + up[i]) >> 1));
+                }
+                break;
+            case 4:
+                for (size_t i = 0; i < bpp && i < stride; ++i) r[i] = static_cast<uint8_t>(src[i] + paeth(0, up[i], 0));
+                for (size_t i = bpp; i < stride; ++i) r[i] = static_cast<uint8_t>(src[i] + paeth(r[i - bpp], up[i], up[i - bpp]));
+                break;
+            default: return fail(error, "bad filter"), Image();
         }
         src += stride;
+        if (colour == 6) {
+            // RGBA rows are the picture's rows.
+            std::memcpy(out.pixel(0, y), r, static_cast<size_t>(width) * 4);
+            std::swap(prev, row);
+            continue;
+        }
         for (int x = 0; x < width; ++x) {
             uint8_t* d = out.pixel(x, y);
             switch (colour) {

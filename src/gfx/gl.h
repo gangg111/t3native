@@ -69,6 +69,9 @@
     X(PFNGLGETINTEGERVPROC, glGetIntegerv)                                                            \
     X(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog)                                                \
     X(PFNGLGETPROGRAMIVPROC, glGetProgramiv)                                                          \
+    X(PFNGLGETPROGRAMBINARYPROC, glGetProgramBinary)                                                  \
+    X(PFNGLPROGRAMBINARYPROC, glProgramBinary)                                                        \
+    X(PFNGLPROGRAMPARAMETERIPROC, glProgramParameteri)                                                \
     X(PFNGLVALIDATEPROGRAMPROC, glValidateProgram)                                                    \
     X(PFNGLGENQUERIESPROC, glGenQueries)                                                              \
     X(PFNGLDELETEQUERIESPROC, glDeleteQueries)                                                        \

@@ -79,6 +79,11 @@ void forget_programs();
 // the app shows them over the game, so a device's failure is seen on a screenshot.
 std::vector<std::string>& shader_errors();
 
+// Native: the folder of the linked programs' binaries (glGetProgramBinary), "" for none: a program
+// whose sources and driver were seen before is taken from there instead of compiled (the first
+// fight's shaders cost a hundred milliseconds on a phone). The app sets it to user://shaders.
+std::string& program_cache_dir();
+
 // The defines every shader is read with (Godot's renderer macros: the Forward+ paths).
 const std::map<std::string, std::string>& base_defines();
 
