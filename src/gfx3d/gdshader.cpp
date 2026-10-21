@@ -285,6 +285,8 @@ GdShader parse_gdshader(const std::string& source, const std::map<std::string, s
                 if (name == "vertex") s.vertex = body, s.has_vertex = true;
                 else if (name == "fragment") s.fragment = body, s.has_fragment = true;
                 else if (name == "light") s.light = body, s.has_light = true;
+                // A sky shader's stage (compose_sky calls it after setting EYEDIR).
+                else if (name == "sky") s.common += "void sky() {" + body + "}\n";
                 else fail("unsupported stage function " + name + "()");
                 stmt.clear();
                 i = j + 1;

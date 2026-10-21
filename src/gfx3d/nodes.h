@@ -72,7 +72,9 @@ public:
 
 class Environment {
 public:
-    enum BGMode { BG_CLEAR_COLOR, BG_COLOR };
+    // BG_SKY: Environment.sky's material (a `shader_type sky` ShaderMaterial) drawn behind the scene.
+    enum BGMode { BG_CLEAR_COLOR, BG_COLOR, BG_SKY };
+    gd::Ref<ShaderMaterial> sky_material;
     enum AmbientSource { AMBIENT_SOURCE_BG, AMBIENT_SOURCE_DISABLED, AMBIENT_SOURCE_COLOR };
     enum ToneMapper { TONE_MAPPER_LINEAR };
     BGMode background_mode = BG_CLEAR_COLOR;

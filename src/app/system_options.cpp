@@ -17,8 +17,13 @@ const char* const TITLES[] = {"SYSTEM OPTION", "GRAPHICS", "SOUND", "GAME", "CON
 
 // Labels that say what they do without the settings screen's help line (the page has none, as the
 // game's own pages): key -> label, and a setting's values (off, on) where On / Off would not tell.
-const std::pair<const char*, const char*> LABELS[] = {{"gameplay_fixes", "ORIGINAL BUGS"}, {"framing", "SCREEN EDGES"}};
+// Native: the arcade version (stage_backdrops: the remake's backdrops, here the stages and the
+// fighters' models together) is VERSION, CONSOLE or ARCADE.
+const std::pair<const char*, const char*> LABELS[] = {
+    {"gameplay_fixes", "ORIGINAL BUGS"}, {"framing", "SCREEN EDGES"}, {"stage_backdrops", "VERSION"}};
 const std::pair<const char*, std::pair<const char*, const char*>> FLAG_VALUES[] = {{"gameplay_fixes", {"KEPT", "FIXED"}}};
+const std::pair<const char*, std::pair<const char*, const char*>> CHOICE_NAMES[] = {
+    {"stage_backdrops", {"playstation", "CONSOLE"}}, {"stage_backdrops", {"arcade", "ARCADE"}}};
 
 gd::Int wrap(gd::Int v, gd::Int step, gd::Int n) { return n <= 0 ? 0 : ((v + step) % n + n) % n; }
 
@@ -60,8 +65,7 @@ std::vector<SystemOptions::Entry> SystemOptions::entries(gd::Int list) const {
             out.push_back(Entry{"CONTROLS", Kind::MENU, "", CONTROLS});
             break;
         case GRAPHICS:
-            for (const char* key : {"graphics", "texture_filter", "shading", "texture_pack", "interpolation", "framing",
-                                    "stage_backdrops", "fullscreen"}) {
+            for (const char* key : {"graphics", "texture_filter", "shading", "texture_pack", "interpolation", "framing", "fullscreen"}) {
                 setting(key);
             }
             break;
@@ -69,7 +73,8 @@ std::vector<SystemOptions::Entry> SystemOptions::entries(gd::Int list) const {
             for (const char* key : {"volume_music", "volume_sfx", "volume_voices", "volume_system", "vibration"}) setting(key);
             break;
         case GAME:
-            for (const char* key : {"gameplay_fixes", "game_texts", "perf_log"}) setting(key);
+            // VERSION only with the arcade's data (Settings offers one choice without it: no row).
+            for (const char* key : {"stage_backdrops", "gameplay_fixes", "game_texts", "perf_log"}) setting(key);
             break;
         case CONTROLS:
             setting("touch_controls");
@@ -95,6 +100,9 @@ std::string SystemOptions::value(const std::string& key, const std::string& labe
     std::string text = capitals(view->value_text(key));
     for (const auto& [k, names] : FLAG_VALUES) {
         if (key == k) text = Settings->flag(key) ? names.second : names.first;
+    }
+    for (const auto& [k, name] : CHOICE_NAMES) {
+        if (key == k && Settings->text(key) == name.first) text = name.second;
     }
     // Beside the label with a space between, inside the value column.
     gd::Int room = (VALUE_COLUMN - static_cast<gd::Int>(label.size() + 1) * ADVANCE) / ADVANCE;

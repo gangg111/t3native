@@ -78,7 +78,35 @@ std::string varying_decl(const ShaderVarying& v, const char* io) {
 
 }  // namespace
 
+// Native: a `shader_type sky` shader (the arcade's sky) as the background pass: one triangle over
+// the screen, each pixel's EYEDIR (the world-space direction through it) from the inverse
+// projection and the camera's rotation; its `sky()` sets COLOR (linear, as Godot's sky).
+GlslPair compose_sky(const GdShader& s) {
+    GlslPair out;
+    std::string common = decode_srgb(s.common, s);
+    out.vertex = std::string(HEADER) +
+                 "out vec2 t3_v_ndc;\n"
+                 "void main() {\n"
+                 "\tvec2 p = vec2(float((gl_VertexID & 1) << 2) - 1.0, float((gl_VertexID & 2) << 1) - 1.0);\n"
+                 "\tt3_v_ndc = p;\n"
+                 "\tgl_Position = vec4(p, 1.0, 1.0);\n}\n";
+    std::ostringstream f;
+    f << HEADER << "in vec2 t3_v_ndc;\nuniform mat4 t3_inv_view;\nuniform mat4 t3_projection;\nuniform vec2 t3_viewport_size;\n"
+      << "layout(location = 0) out vec4 t3_frag_color;\n"
+      << "vec3 EYEDIR;\nvec2 SCREEN_UV;\nvec3 COLOR = vec3(0.0);\nfloat ALPHA = 1.0;\n"
+      << SRGB_HELPERS << common
+      << "void main() {\n"
+         "\tvec4 p = inverse(t3_projection) * vec4(t3_v_ndc, 1.0, 1.0);\n"
+         "\tEYEDIR = normalize(mat3(t3_inv_view) * (p.xyz / p.w));\n"
+         "\tSCREEN_UV = gl_FragCoord.xy / t3_viewport_size;\n"
+         "\tsky();\n"
+         "\tt3_frag_color = vec4(COLOR, 1.0);\n}\n";
+    out.fragment = f.str();
+    return out;
+}
+
 GlslPair compose_glsl(const GdShader& s, Pass pass) {
+    if (s.type == "sky") return compose_sky(s);
     GlslPair out;
     std::string common = decode_srgb(s.common, s);
     bool world = s.mode("world_vertex_coords");

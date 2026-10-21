@@ -698,6 +698,31 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         else if (env->ambient_light_source == Environment::AMBIENT_SOURCE_BG) ambient = bg * env->ambient_light_energy;
     }
 
+    // The material's uniforms and textures.
+    auto bind_user = [&](const Program& p, const Look& look) {
+        for (const Program::User& u : p.user) {
+            const ShaderValue* val = param(look, u.uniform->name);
+            if (u.uniform->as_texture) {
+                set_array_texture(u, val);
+            } else if (u.uniform->type == "sampler2D") {
+                gfx::TextureRef tex;
+                if (val) {
+                    if (const auto* t = std::get_if<gfx::TextureRef>(val)) tex = *t;
+                }
+                if (!tex) tex = g.white;
+                ShaderUniform::Filter f = u.uniform->filter;
+                bool mip = f == ShaderUniform::Filter::DEFAULT || f == ShaderUniform::Filter::NEAREST_MIPMAP ||
+                           f == ShaderUniform::Filter::LINEAR_MIPMAP || f == ShaderUniform::Filter::LINEAR_MIPMAP_ANISOTROPIC;
+                if (mip) tex->ensure_mipmaps();
+                glActiveTexture(GL_TEXTURE0 + u.unit);
+                glBindTexture(GL_TEXTURE_2D, tex->id());
+                glBindSampler(u.unit, g.sampler(f, u.uniform->repeat));
+            } else {
+                set_uniform(u, val);
+            }
+        }
+    };
+
     // One draw: the program's built-ins, the material's uniforms and textures, the render state
     // its modes ask for, the surface (uploaded on first use) and a MultiMesh's instances. `lit`:
     // the colour pass, with the lights, the shadow and the ambient light.
@@ -802,28 +827,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
             }
             if (p.receive_shadows >= 0) glUniform1i(p.receive_shadows, sun >= 0 && !s.mode("shadows_disabled") ? 1 : 0);
         }
-        // The material's uniforms and textures.
-        for (const Program::User& u : p.user) {
-            const ShaderValue* val = param(it.look, u.uniform->name);
-            if (u.uniform->as_texture) {
-                set_array_texture(u, val);
-            } else if (u.uniform->type == "sampler2D") {
-                gfx::TextureRef tex;
-                if (val) {
-                    if (const auto* t = std::get_if<gfx::TextureRef>(val)) tex = *t;
-                }
-                if (!tex) tex = g.white;
-                ShaderUniform::Filter f = u.uniform->filter;
-                bool mip = f == ShaderUniform::Filter::DEFAULT || f == ShaderUniform::Filter::NEAREST_MIPMAP ||
-                           f == ShaderUniform::Filter::LINEAR_MIPMAP || f == ShaderUniform::Filter::LINEAR_MIPMAP_ANISOTROPIC;
-                if (mip) tex->ensure_mipmaps();
-                glActiveTexture(GL_TEXTURE0 + u.unit);
-                glBindTexture(GL_TEXTURE_2D, tex->id());
-                glBindSampler(u.unit, g.sampler(f, u.uniform->repeat));
-            } else {
-                set_uniform(u, val);
-            }
-        }
+        bind_user(p, it.look);
         // The geometry.
         Mesh::Surface& surface = *it.surface;
         if (!surface.gpu || surface.gpu->generation != gl_generation()) upload(surface);
@@ -965,6 +969,28 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
     glClearDepthf(1.0f);
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // The sky (BG_SKY): one triangle over the screen behind everything, no depth written.
+    if (env && env->background_mode == Environment::BG_SKY && env->sky_material) {
+        Look sky = look_of(env->sky_material.get());
+        if (sky.color) {
+            const Program& p = *sky.color;
+            glUseProgram(p.id);
+            if (p.inv_view >= 0) glUniformMatrix4fv(p.inv_view, 1, GL_FALSE, inv_view_m.m);
+            if (p.projection >= 0) glUniformMatrix4fv(p.projection, 1, GL_FALSE, proj_m.m);
+            if (p.viewport_size >= 0) glUniform2f(p.viewport_size, static_cast<float>(iw), static_cast<float>(ih));
+            bind_user(p, sky);
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+            glBindVertexArray(g.final_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDepthMask(GL_TRUE);
+            ++stats_.draws;
+        } else {
+            ++stats_.programs_failed;
+        }
+    }
     std::vector<Item*> opaque, blended;
     for (Item& it : items) (it.look.transparent ? blended : opaque).push_back(&it);
     // Godot's transparent order: render_priority first (lower drawn first), then back to front.

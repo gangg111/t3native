@@ -5,6 +5,7 @@
 
 #include "content/json_file.h"
 #include "core/math/fx.h"
+#include "gd/io.h"
 
 namespace t3 {
 
@@ -42,6 +43,11 @@ gd::PI32 to_int32_array(const gd::PBytes& b) {
 // A float element of a PackedFloat32Array (read and written as float, not through gd::Int).
 float& fat(const gd::Packed<float>& a, gd::Int i) { return a.vec()[gd::index(i, a.vec().size())]; }
 }  // namespace
+
+std::string CharacterModel::arcade_dir(const std::string& dir) {
+    std::string arcade = gd::path_join(dir, "arcade");
+    return gd::file_exists(gd::path_join(arcade, "model.json")) ? arcade : "";
+}
 
 gd::Ref<CharacterModel> CharacterModel::load_from(const std::string& dir) {
     gd::Json data = JsonFile::read(dir + "/model.json");

@@ -161,3 +161,24 @@ T3_TEST(system_options, capitals_and_values_fit) {
     // source: by hand: (324 - 24 * 9) / 9 = 12 characters beside a 23-character label
     t.expect_equal(s.value("game_texts", std::string(23, 'X')), std::string("ENGLISH (USA"), "cut to the value column");
 }
+
+// Native VERSION (stage_backdrops): with the arcade's data its row heads GAME as CONSOLE, and
+// Right makes it ARCADE; without that data there is no row (one choice).
+T3_TEST(system_options, version_console_and_arcade) {
+    GameSettings settings;
+    settings.values = GameSettings::sanitized(gd::Json::parse("{}"));
+    SettingsView view;
+    view.Settings = &settings;
+    SystemOptions s;
+    s.Settings = &settings;
+    s.view = &view;
+    // source: by hand: no Assets_has_group, so stage_backdrops offers "playstation" only
+    t.expect(s.entries(SystemOptions::GAME)[0].key != "stage_backdrops", "no arcade data: no VERSION row");
+    settings.Assets_has_group = [](const std::string& group) { return group == "arcade"; };
+    std::vector<SystemOptions::Entry> game = s.entries(SystemOptions::GAME);
+    t.expect(game[0].key == "stage_backdrops" && game[0].label == "VERSION", "VERSION heads GAME");
+    // source: settings.h: the native default is the PlayStation's
+    t.expect_equal(s.value("stage_backdrops", "VERSION"), std::string("CONSOLE"), "CONSOLE by default");
+    settings.values.set("stage_backdrops", std::string("arcade"));
+    t.expect_equal(s.value("stage_backdrops", "VERSION"), std::string("ARCADE"), "ARCADE");
+}

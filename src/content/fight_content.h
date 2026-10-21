@@ -30,6 +30,7 @@ public:
     gd::Dict<gd::Int, gd::Ref<MotionBank>> _banks;                // bank type -> MotionBank
     gd::Dict<gd::Int, gd::Arr<gd::Ref<MoveRow>>> _rows;           // bank type -> Array[MoveRow]
     gd::Dict<gd::Int, gd::Ref<CharacterModel>> _models;           // costume slot -> CharacterModel
+    gd::Dict<gd::Int, gd::Ref<CharacterModel>> _arcade_models;    // costume slot -> the arcade's, or null
     gd::Dict<std::string, gd::Ref<StageData>> _stages;            // stage letter -> StageData
     gd::Dict<std::string, gd::PBytes> _move_texts;                // file path -> PackedByteArray
     gd::Dict<gd::Int, std::string> _move_paths;                   // costume slot -> _move_text_path, for _move_paths_locale / _english
@@ -47,6 +48,10 @@ public:
     gd::Arr<gd::Ref<MoveRow>> rows(gd::Int bank_type);
     // The model of a costume slot.
     gd::Ref<CharacterModel> model(gd::Int costume_slot);
+    // Native: the model the fighter's VIEW draws: the arcade's with `arcade` (the VERSION option)
+    // where the costume has one, else model(). The simulation always takes model(): its skeleton
+    // and parts drive the fight, which must not change with the look.
+    gd::Ref<CharacterModel> view_model(gd::Int costume_slot, bool arcade);
     // The converted stage of a letter (STAGE_LETTERS, or the attract demonstration's), loaded once:
     // the fights, the ranking's backdrop and the demonstration share it (the views do not change it).
     gd::Ref<StageData> stage(const std::string& letter);

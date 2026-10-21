@@ -57,6 +57,16 @@ gd::Ref<CharacterModel> FightContent::model(gd::Int costume_slot) {
     return _models.at(costume_slot);
 }
 
+gd::Ref<CharacterModel> FightContent::view_model(gd::Int costume_slot, bool arcade) {
+    if (!arcade) return model(costume_slot);
+    if (!_arcade_models.has(costume_slot)) {
+        std::string dir = CharacterModel::arcade_dir(gd::path_join(root, "characters/costume_" + pad2(costume_slot)));
+        _arcade_models.set(costume_slot, dir.empty() ? nullptr : CharacterModel::load_from(dir));
+    }
+    gd::Ref<CharacterModel> m = _arcade_models.at(costume_slot);
+    return m != nullptr ? m : model(costume_slot);
+}
+
 gd::Ref<StageData> FightContent::stage(const std::string& letter) {
     if (!_stages.has(letter)) {
         _stages.set(letter, StageData::load_from(gd::path_join(root, "stages/" + letter)));

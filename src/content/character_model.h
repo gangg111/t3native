@@ -101,6 +101,9 @@ public:
     gd::Arr<gd::Ref<ArcadeAttachment>> arcade_attachments;
 
     static gd::Ref<CharacterModel> load_from(const std::string& dir);
+    // Native: the folder of a costume's arcade model (tools/arcade_overlay.py: `<dir>/arcade`), or ""
+    // when the costume has none (Mokujin, a conversion without the arcade set).
+    static std::string arcade_dir(const std::string& dir);
 
     // The hands' and the wings' groups together.
     gd::Arr<gd::Ref<VariantGroup>> variant_groups() const;

@@ -24,10 +24,8 @@
 // in world axes as in the arcade (game-bugs.md #67: the corners showed the sky). Every tile shows its quarter-tile texture: the arcade's own budget of 11 split tiles a frame
 // (FUN_801A941C, the others at half the resolution) is not reproduced.
 //
-// TODO: arcade stages (no arcade data): the converted data is the PlayStation disc's only
-// (manifest "arcade": false), so StageData.arcade is always null. The arcade branches keep their
-// call sites and go to `_arcade_stub`, which logs once and draws nothing; ArcadeProps and the
-// arcade scene and sky shaders are not ported.
+// Native: the arcade data comes from a conversion with the arcade set (tools/arcade_overlay.py);
+// the setting is the VERSION option (CONSOLE / ARCADE). The sky is gfx3d's Environment.BG_SKY.
 #include <string>
 
 #include "gd/gd.h"
@@ -52,7 +50,6 @@ public:
     static constexpr gd::Int FLOOR_UNDER_WALLS = 500;
     static constexpr gd::Int TILED_FLOOR_HALF = 60000;
     static inline const std::string FLOOR_FADE_FILE = "floor_fade.json";
-    // TODO: arcade stages (no arcade data): these shaders are not in t3native/shaders (never drawn).
     static inline const gd::Ref<Shader> ARCADE_SCENE_SHADER = Shader::load("res://presentation/stage/arcade_scene.gdshader");
     static inline const gd::Ref<Shader> ARCADE_SKY_SHADER = Shader::load("res://presentation/stage/arcade_sky.gdshader");
     static const gd::Dict<std::string, gd::Int> SKY_KINDS;   // {"tiles": 0, "gradient": 1, "fill": 2}
@@ -167,9 +164,6 @@ public:
     void _panorama_textures();
     // The Textures or Texture pack setting changed: the shaders and pictures again.
     void _on_setting_changed(const std::string& key);
-
-    // TODO: arcade stages (no arcade data): where an arcade branch would draw; logs once.
-    static void _arcade_stub(const std::string& where);
 };
 
 }  // namespace t3

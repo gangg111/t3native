@@ -51,6 +51,21 @@ gd::Dict<gd::Int, gd::Ref<CharacterModel>> EnbuAssets::models(gd::Int number) {
     return _models.at(number);
 }
 
+gd::Dict<gd::Int, gd::Ref<CharacterModel>> EnbuAssets::view_models(gd::Int number, bool arcade) {
+    gd::Dict<gd::Int, gd::Ref<CharacterModel>> ps = models(number);
+    if (!arcade) return ps;
+    if (!_arcade_models.has(number)) {
+        gd::Dict<gd::Int, gd::Ref<CharacterModel>> loaded;
+        gd::Dict<gd::Int, std::string> names = demo(number)->models;
+        for (const std::pair<gd::Int, std::string>& kv : names) {
+            std::string dir = CharacterModel::arcade_dir(gd::path_join(root, "characters/" + kv.second));
+            loaded[kv.first] = dir.empty() ? ps.at(kv.first) : CharacterModel::load_from(dir);
+        }
+        _arcade_models[number] = loaded;
+    }
+    return _arcade_models.at(number);
+}
+
 gd::Ref<CameraReel> EnbuAssets::reel() {
     return gd::make<CameraReel>(motions->own, data->camera_reel, camera_tables);
 }

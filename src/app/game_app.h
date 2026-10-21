@@ -264,6 +264,8 @@ private:
     std::unique_ptr<Resim> _resim;  // a load in progress
     gd::Int _notice_frames = 0;
     std::string _perf_note;         // what this frame did that may take long (PerfLog::spike)
+    // Native: VERSION on ARCADE (stage_backdrops): the views draw the arcade's models and stages.
+    bool _arcade_version() { return Settings.text("stage_backdrops") == "arcade"; }
     void _perf(const std::string& what);
     gd::Ref<GameFlow> _make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on);
     void _map_blocks();

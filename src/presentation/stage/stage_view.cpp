@@ -2,9 +2,13 @@
 // Draws a stage: the distant panorama and the tiled floor (see the header).
 #include "presentation/stage/stage_view.h"
 
+#include <algorithm>
+#include <cmath>
 #include <set>
 
 #include "content/arcade_stage_data.h"
+#include "core/fight/round_state.h"
+#include "presentation/stage/arcade_props.h"
 #include "content/json_file.h"
 #include "content/stage_data.h"
 #include "content/texture_packs.h"
@@ -25,6 +29,19 @@ std::string get_base_dir(const std::string& path) {
     if (at == std::string::npos) return "";
     if (at == 0) return "/";
     return path.substr(0, at);
+}
+
+constexpr double TAU = 6.28318530717958647692;
+
+// Godot's fposmod and wrapf (floats).
+double fposmod(double x, double y) {
+    double m = std::fmod(x, y);
+    return (m < 0) != (y < 0) && m != 0 ? m + y : m;
+}
+
+double wrapf(double value, double min, double max) {
+    double range = max - min;
+    return range == 0 ? min : value - range * std::floor((value - min) / range);
 }
 
 }  // namespace
@@ -120,10 +137,24 @@ gd::Ref<ArrayMesh> StageView::_panorama_mesh(const gd::Ref<StageData>& stage) {
 
 // The arcade scene or a prop (arcade.py's scene.bin format).
 gd::Ref<ArrayMesh> StageView::_arcade_mesh(const gd::Packed<float>& v, gd::Int stride) {
-    (void)v;
-    (void)stride;
-    _arcade_stub("_arcade_mesh");   // TODO: arcade stages (no arcade data)
-    return gd::make<ArrayMesh>();
+    const std::vector<float>& f = v.vec();
+    size_t count = stride > 0 ? f.size() / static_cast<size_t>(stride) : 0;
+    MeshArrays arrays;
+    arrays.vertex.resize(count);
+    arrays.tex_uv.resize(count);
+    arrays.custom[0].resize(4 * count);
+    arrays.custom[1].resize(3 * count);
+    arrays.custom_components = {4, 3, 4, 4};   // ARRAY_CUSTOM_RGBA_FLOAT, ARRAY_CUSTOM_RGB_FLOAT
+    for (size_t i = 0; i < count; ++i) {
+        size_t o = i * static_cast<size_t>(stride);
+        arrays.vertex[i] = WorldSpace::point(f[o], f[o + 1], f[o + 2]);
+        arrays.tex_uv[i] = gfx::Vec2(f[o + 3], f[o + 4]);
+        for (size_t k = 0; k < 4; ++k) arrays.custom[0][4 * i + k] = f[o + 5 + k];
+        for (size_t k = 0; k < 3; ++k) arrays.custom[1][3 * i + k] = f[o + 9 + k];
+    }
+    gd::Ref<ArrayMesh> mesh = gd::make<ArrayMesh>();
+    mesh->add_surface_from_arrays(Primitive::TRIANGLES, arrays);
+    return mesh;
 }
 
 // One simulation step (see the header).
@@ -137,31 +168,56 @@ void StageView::step(gd::Int camera_yaw, gd::Int round_number, gd::Int round_sta
             ->set_shader_parameter("frame", static_cast<int>(frame));
     }
     if (props == nullptr) return;
-    // TODO: arcade stages (no arcade data): the props' round start (ArcadeProps.start with
-    // ArcadeProps.arcade_buttons(held)), the helicopter's visibility and ArcadeProps.step.
-    (void)camera_yaw;
-    (void)round_number;
-    (void)round_state;
-    (void)held;
-    _arcade_stub("step");
+    if (round_number >= 0 && round_number != _round) {
+        _round = round_number;
+        props->start(ArcadeProps::arcade_buttons(held), _steps);
+    }
+    if (props->kind == ArcadeProps::HELICOPTER) {
+        bool shown = round_state >= RoundState::REPLAY;
+        prop_nodes[0]->visible = shown;
+        if (!shown) return;
+    }
+    props->step(camera_yaw);
     _place_props();
 }
 
 // The props' meshes under the scene.
 void StageView::_build_props(const gd::Ref<StageData>& stage) {
     if (arcade->props_kind.empty() || arcade->props_meshes.is_empty()) return;
-    (void)stage;
-    _arcade_stub("_build_props");   // TODO: arcade stages (no arcade data): ArcadeProps is not ported
+    props = gd::make<ArcadeProps>(arcade->props_kind, _arcade_sine_table(get_base_dir(stage->directory)));
+    for (gd::Int k = 0; k < arcade->props_meshes.size(); ++k) {
+        gd::Ref<MeshInstance3D> node = gd::make<MeshInstance3D>();
+        node->mesh = _arcade_mesh(arcade->props_meshes[k], arcade->vertex_floats);
+        node->material_override = panorama->material_override;
+        node->cast_shadow = GeometryInstance3D::SHADOW_CASTING_SETTING_OFF;
+        Node3D* parent = props->kind == ArcadeProps::HELICOPTER && k > 0 ? prop_nodes[0].get() : panorama.get();
+        parent->add_child(node);
+        prop_nodes.append(node);
+    }
+    if (props->kind == ArcadeProps::HELICOPTER) prop_nodes[0]->visible = false;
+    props->start();
+    _place_props();
 }
 
 // The props' transforms from their SVECTOR angles and positions.
 void StageView::_place_props() {
-    _arcade_stub("_place_props");   // TODO: arcade stages (no arcade data)
+    // Basis.from_scale(Vector3(1, -1, -1)): the game's y-down frame and Godot's.
+    const Basis flip(Vector3(1, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, -1));
+    for (gd::Int k = 0; k < prop_nodes.size(); ++k) {
+        const gd::PI32& a = props->angles[k];
+        Basis rx = Basis::from_axis_angle(Vector3(1, 0, 0), static_cast<float>(WorldSpace::radians(a[0])));
+        Basis ry = Basis::from_axis_angle(Vector3(0, 1, 0), static_cast<float>(WorldSpace::radians(a[1])));
+        Basis rz = Basis::from_axis_angle(Vector3(0, 0, 1), static_cast<float>(WorldSpace::radians(a[2])));
+        Basis turn = props->kind == ArcadeProps::HELICOPTER ? ry * rx * rz : rx * ry * rz;
+        prop_nodes[k]->transform = Transform3D(flip * turn * flip, WorldSpace::point_i(props->positions[k]));
+    }
 }
 
 gd::PI32 StageView::_arcade_sine_table(const std::string& stages_dir) {
-    (void)stages_dir;
-    _arcade_stub("_arcade_sine_table");   // TODO: arcade stages (no arcade data)
+    if (_arcade_sine.is_empty()) {
+        gd::Json d = JsonFile::read(gd::path_join(stages_dir, ArcadeStageData::SINE_FILE));
+        _arcade_sine = JsonFile::ints(d.get("table"));
+    }
     return _arcade_sine;
 }
 
@@ -178,10 +234,11 @@ gd::PI32 StageView::coverage() const {
 // Shows the arcade's sky as `environment`'s background (see the header).
 void StageView::apply_environment(const gd::Ref<Environment>& environment, bool true_ogre) {
     if (sky_material == nullptr || true_ogre) return;
-    // TODO: arcade stages (no arcade data): Sky with sky_material as environment.sky,
-    // REFLECTION_SOURCE_DISABLED (gfx3d's Environment has no sky).
-    (void)environment;
-    _arcade_stub("apply_environment");
+    // Sky.new() with sky_material (gfx3d draws an Environment's sky material directly; it has no
+    // reflections to disable).
+    environment->sky_material = sky_material;
+    _environment = environment;
+    _show_sky();
 }
 
 void StageView::_notification(gd::Int what) {
@@ -190,22 +247,54 @@ void StageView::_notification(gd::Int what) {
 
 void StageView::_show_sky() {
     if (_environment != nullptr) {
-        // TODO: arcade stages (no arcade data): BG_SKY while is_visible_in_tree(), else BG_COLOR
-        // (gfx3d's Environment has no BG_SKY; _environment is only set with the arcade sky).
-        _arcade_stub("_show_sky");
+        _environment->background_mode = is_visible_in_tree() ? Environment::BG_SKY : Environment::BG_COLOR;
     }
 }
 
 // Every rendered frame: the arcade sky's layout for `camera` (see the header).
 void StageView::place_sky(const gd::Ref<Camera3D>& camera, gfx::Vec2 frame_tan) {
     if (sky_material == nullptr) return;
-    (void)camera;
-    (void)frame_tan;
-    _arcade_stub("place_sky");   // TODO: arcade stages (no arcade data)
+    Basis b = camera->get_global_basis();
+    Vector3 z = b.get_column(2);
+    double yaw = std::atan2(z.x, z.z) * WorldSpace::ANGLE_UNITS / TAU;
+    double pitch = wrapf(std::asin(std::clamp(static_cast<double>(z.y), -1.0, 1.0)) * WorldSpace::ANGLE_UNITS / TAU,
+                             -ANGLE_HALF, ANGLE_HALF);
+    const gd::Json& sky = arcade->sky;
+    auto num = [&](const char* key, double fallback) {
+        const gd::Json& v = sky.get(key);
+        return v.is_null() ? fallback : v.num();
+    };
+    double step = num("step", 1.0);
+    double k = num("pitch_scale", 0.0);
+    double y = -pitch * k / 256.0 + num("offset", 0.0);
+    if ((sky.get("clamp_top").is_bool() && sky.get("clamp_top").boolean()) || sky.get("kind").str() == "gradient") y = std::min(y, 0.0);
+    if (!sky.get("clamp_bottom").is_null()) y = std::max(y, sky.get("clamp_bottom").num());
+    sky_material->set_shader_parameter("view", b.inverse());
+    sky_material->set_shader_parameter("frame_tan", frame_tan);
+    sky_material->set_shader_parameter("scroll", static_cast<float>(fposmod(static_cast<double>(_backdrop_turn) - yaw,
+                                                                                WorldSpace::ANGLE_UNITS) *
+                                                                    512.0 / step));
+    sky_material->set_shader_parameter("sky_top", static_cast<float>(y));
 }
 
 void StageView::_sky_parameters() {
-    _arcade_stub("_sky_parameters");   // TODO: arcade stages (no arcade data)
+    const gd::Json& sky = arcade->sky;
+    sky_material->shader = RenderQuality::shader(ARCADE_SKY_SHADER);
+    std::string kind = sky.get("kind").is_null() ? "tiles" : sky.get("kind").str();
+    sky_material->set_shader_parameter("kind", static_cast<int>(SKY_KINDS.has(kind) ? SKY_KINDS.at(kind) : 0));
+    if (sky.has("texture")) {
+        sky_material->set_shader_parameter("strip", TexturePacks::texture(gd::path_join(arcade->directory, sky.get("texture").str())));
+    }
+    sky_material->set_shader_parameter("turn_pixels",
+                                       static_cast<float>(sky.get("turn_pixels").is_null() ? 4096.0 : sky.get("turn_pixels").num()));
+    sky_material->set_shader_parameter("rows", static_cast<float>(sky.get("rows").is_null() ? 0.0 : sky.get("rows").num()));
+    sky_material->set_shader_parameter("upper_fill", _fill(sky.get("upper_fill")));
+    sky_material->set_shader_parameter("lower_fill", _fill(sky.get("lower_fill")));
+    const gd::Json& gradient = sky.get("gradient");
+    if (gradient.is_array() && gradient.size() == 2) {
+        sky_material->set_shader_parameter("gradient_top", _fill(gradient[0]));
+        sky_material->set_shader_parameter("gradient_bottom", _fill(gradient[1]));
+    }
 }
 
 // An RGB fill (enabled: alpha 1) or none (alpha 0).
@@ -299,8 +388,7 @@ gfx::TextureRef StageView::_floor_fade_table(const std::string& stages_dir) {
 
 // The arcade floor's table (FUN_801A941C, stages/arcade_floor_fade.json).
 gfx::TextureRef StageView::_arcade_floor_fade_table(const std::string& stages_dir) {
-    (void)stages_dir;
-    _arcade_stub("_arcade_floor_fade_table");   // TODO: arcade stages (no arcade data)
+    if (_arcade_fade_table == nullptr) _arcade_fade_table = _table_texture(gd::path_join(stages_dir, ArcadeStageData::FADE_FILE));
     return _arcade_fade_table;
 }
 
@@ -348,8 +436,15 @@ void StageView::_floor_textures(const gd::Ref<ShaderMaterial>& material, const g
 void StageView::_panorama_textures() {
     gd::Ref<ShaderMaterial> material = std::dynamic_pointer_cast<ShaderMaterial>(panorama->material_override);
     if (arcade != nullptr) {
-        // TODO: arcade stages (no arcade data): ARCADE_SCENE_SHADER, its atlas and animation frames.
-        _arcade_stub("_panorama_textures");
+        material->shader = RenderQuality::shader(ARCADE_SCENE_SHADER);
+        material->set_shader_parameter("atlas", TexturePacks::texture(gd::path_join(arcade->directory, arcade->scene_texture)));
+        if (!arcade->scene_animation_rect.is_empty()) {
+            const gd::PI32& r = arcade->scene_animation_rect;
+            material->set_shader_parameter("frames",
+                                           TexturePacks::texture(gd::path_join(arcade->directory, arcade->scene_animation_texture)));
+            material->set_shader_parameter("frames_rect", Vector4(static_cast<float>(gd::Int(r[0])), static_cast<float>(gd::Int(r[1])),
+                                                                  static_cast<float>(gd::Int(r[2])), static_cast<float>(gd::Int(r[3]))));
+        }
         return;
     }
     material->shader = RenderQuality::shader(PANORAMA_SHADER);
@@ -364,13 +459,6 @@ void StageView::_on_setting_changed(const std::string& key) {
         std::dynamic_pointer_cast<ArrayMesh>(floor_mesh->mesh)->surface_get_material(0));
     _floor_textures(floor_material, _stage, arcade);
     if (sky_material != nullptr) _sky_parameters();
-}
-
-// TODO: arcade stages (no arcade data): where an arcade branch would draw; logs once per place.
-void StageView::_arcade_stub(const std::string& where) {
-    static std::set<std::string> logged;
-    if (logged.insert(where).second)
-        Log::warning("StageView." + where + ": arcade stages are not ported (no arcade data); drawing nothing");
 }
 
 }  // namespace t3

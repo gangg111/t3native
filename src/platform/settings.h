@@ -60,7 +60,8 @@ public:
         d.set("texture_pack", Entry{S(""), {S("")}});
         d.set("interpolation", Entry{true, {true, false}});
         d.set("framing", Entry{S("stage"), {S("stage"), S("bars")}});
-        d.set("stage_backdrops", Entry{S("arcade"), {S("arcade"), S("playstation")}});
+        // Native: the remake's default is the arcade's; here CONSOLE (the PlayStation's) until chosen.
+        d.set("stage_backdrops", Entry{S("playstation"), {S("arcade"), S("playstation")}});
         d.set("volume_music", Entry{VOLUME_STEPS, {}});
         d.set("volume_sfx", Entry{VOLUME_STEPS, {}});
         d.set("volume_voices", Entry{VOLUME_STEPS, {}});

@@ -9,3 +9,4 @@
 /android/res/mipmap-*/
 __pycache__/
 /art/private/
+/.claude/

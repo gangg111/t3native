@@ -1245,7 +1245,7 @@ void GameApp::_build_fight_view() {
     // stand-in attacker and is not drawn).
     for (gd::Int p = 0; p < fight->count; ++p) {
         const gd::Ref<FighterState>& f = fight->fighters[p];
-        models.append(content->model(f->costume_slot));
+        models.append(content->view_model(f->costume_slot, _arcade_version()));
         slots.append(static_cast<int32_t>(f->costume_slot));
         chars.append(static_cast<int32_t>(f->char_id));
     }
@@ -1278,7 +1278,7 @@ void GameApp::_replace_fighters() {
         _model_loads[i] = flow->sim->model_loads[i];
         const gd::Ref<FighterState>& f = fight->fighters[i];
         if (fight_view != nullptr && i < fight_view->fighters.size()) {
-            fight_view->replace_fighter(i, content->model(f->costume_slot), f->costume_slot);
+            fight_view->replace_fighter(i, content->view_model(f->costume_slot, _arcade_version()), f->costume_slot);
         }
         hud.set_slot(i, f->costume_slot);
     }
@@ -1288,7 +1288,7 @@ void GameApp::_replace_fighters() {
 gd::Ref<EnbuPerformance> GameApp::_new_performance(gd::Int number) {
     _perf("demo load");
     gd::Ref<EnbuAssets> assets = _enbu_assets();
-    enbu_view->load_demo(assets->demo(number), assets->models(number));
+    enbu_view->load_demo(assets->demo(number), assets->view_models(number, _arcade_version()));
     return assets->performance(number);
 }
 
