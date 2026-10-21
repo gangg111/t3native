@@ -37,6 +37,16 @@ add_custom_command(
   DEPENDS ${T3_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
   COMMENT "Embedding the UI font")
 list(APPEND T3_CORE_SOURCES ${T3_FONT_CPP})
+# The native KEY CONFIGURATION's pad picture (art/draw_dualsense.py) built into the program.
+set(T3_PAD ${CMAKE_CURRENT_SOURCE_DIR}/art/pad_dualsense.png)
+set(T3_PAD_CPP ${CMAKE_CURRENT_BINARY_DIR}/pad_dualsense.cpp)
+add_custom_command(
+  OUTPUT ${T3_PAD_CPP}
+  COMMAND ${CMAKE_COMMAND} -DFILE=${T3_PAD} -DNAME=pad_dualsense -DOUT=${T3_PAD_CPP}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
+  DEPENDS ${T3_PAD} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
+  COMMENT "Embedding the pad picture")
+list(APPEND T3_CORE_SOURCES ${T3_PAD_CPP})
 add_library(t3core STATIC ${T3_CORE_SOURCES})
 target_include_directories(t3core PUBLIC src third_party)
 if(ANDROID)

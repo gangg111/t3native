@@ -48,7 +48,11 @@ bool OptionsScreen::item_hidden(gd::Int p, gd::Int i) {
 
 std::string OptionsScreen::item_label(gd::Int p, gd::Int i) {
     std::string label = _item(p, i)["label"].str();
-    return system_option && label == "DISPLAY ADJUST" ? SYSTEM_LABEL : label;
+    return system_option && label == "DISPLAY ADJUST" ? SYSTEM_LABEL : shown(label);
+}
+
+std::string OptionsScreen::shown(const std::string& text) const {
+    return system_option && SAVE_NAMES.has(text) ? SAVE_NAMES.at(text) : text;
 }
 
 // The value byte of an item (a progress byte, or the page byte).

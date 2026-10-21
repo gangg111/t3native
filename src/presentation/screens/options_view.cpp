@@ -13,6 +13,11 @@
 #include "core/game/ranking_screen.h"
 #include "gd/io.h"
 
+namespace t3::embedded {
+extern const unsigned char pad_dualsense[];
+extern const unsigned long pad_dualsense_size;
+}  // namespace t3::embedded
+
 namespace t3 {
 
 namespace {
@@ -157,7 +162,12 @@ void OptionsView::_glow(float x, float y, float w, bool pulse) {
 void OptionsView::_list(gd::Int p) {
     const gd::Json& page = flow->data->option_pages[p];
     std::string title = page["title"].str();
-    if (!title.empty()) text(title, 1, _title_colour(), JsonFile::number(page["x"]), JsonFile::number(page["y"]));
+    if (!title.empty()) {
+        // A renamed title keeps the original's centre.
+        std::string name = options->shown(title);
+        float x = JsonFile::number(page["x"]) + (text_width(title, 1) - text_width(name, 1)) / 2.0f;
+        text(name, 1, _title_colour(), x, JsonFile::number(page["y"]));
+    }
     gd::Int x = JsonFile::number(page["list_x"]);
     gd::Int y = JsonFile::number(page["list_y"]);
     gd::Int spacing = JsonFile::number(page["spacing"]);
@@ -283,7 +293,7 @@ void OptionsView::_card_message() {
     const gd::Dict<gd::Int, CardMessage>& table = sub == 2 ? LOAD_MESSAGES : CARD_MESSAGES;
     CardMessage e = table.get(state, CardMessage{"SOMETHING MESSAGE", 3});
     gd::Int colour = e.colour;
-    centred(e.text, 0, colour, 0xB8, 0x168);
+    centred(options->shown(e.text), 0, colour, 0xB8, 0x168);
 }
 
 // FUN_800DF630: both players' pad pictures, button actions, VIBRATION, DEFAULT and EXIT.
@@ -292,7 +302,12 @@ void OptionsView::_keys() {
     for (const gd::Ref<OptionsScreen::KeyRecord>& rec : options->keys) {
         gd::Int x = rec->x + 0x14;
         gd::Int y = rec->y;
-        image(pads[0], x, y + 0x88);
+        if (options->system_option) {
+            // Native: a DualSense in the PS1 pad's place (the pads a phone takes), drawn at 4x.
+            image(_dualsense(), x, y + 0x88, PAD_SIZE.x, PAD_SIZE.y);
+        } else {
+            image(pads[0], x, y + 0x88);
+        }
         for (gd::Int i = 0; i < 8; ++i) {
             gd::Ref<OptionsScreen::KeyRow> row = rec->rows[i];
             gd::Int action = flow->progress->button_action(rec->player, row->button);
@@ -309,6 +324,16 @@ void OptionsView::_keys() {
         _item("DEFAULT", rec->selected == 2, x, y + 0x188);
         _item("EXIT", rec->selected == 3, x, y + 0x1A2);
     }
+}
+
+const gfx::TextureRef& OptionsView::_dualsense() {
+    if (dualsense == nullptr) {
+        gd::PBytes png;
+        png.resize(static_cast<gd::Int>(embedded::pad_dualsense_size));
+        for (unsigned long i = 0; i < embedded::pad_dualsense_size; ++i) png.set(static_cast<gd::Int>(i), embedded::pad_dualsense[i]);
+        dualsense = std::make_shared<gfx::Texture>(gfx::decode_png(png), false, true);
+    }
+    return dualsense;
 }
 
 void OptionsView::_item(const std::string& label, bool selected, float x, float y) {

@@ -112,6 +112,25 @@ T3_TEST(system_options, touch_off_needs_another_input) {
     t.expect_equal(f.Settings.text("touch_controls"), std::string("off"), "with a pad: OFF");
 }
 
+// The memory card as the phone's save data: renamed, no slot to choose.
+T3_TEST(system_options, save_data_in_place_of_the_card) {
+    if (!t.require(t3test::imported("tables/flow.json"))) return;
+    Fixture f(true);
+    OptionsScreen& o = *f.flow->options;
+    // source: flow.json's OPTION MODE: MEMORY CARD is the 5th item; its page's CARD SAVE, CARD LOAD
+    t.expect_equal(o.item_label(0, 4), std::string("SAVE DATA"), "MEMORY CARD shown as SAVE DATA");
+    t.expect_equal(o.item_label(3, 0), std::string("SAVE"), "CARD SAVE as SAVE");
+    t.expect_equal(o.item_label(3, 1), std::string("LOAD"), "CARD LOAD as LOAD");
+    t.expect_equal(o.item_label(3, 2), std::string("AUTO SAVE"), "AUTO SAVE kept");
+    t.expect_equal(o.shown("NO TEKKEN3 FILE!"), std::string("NO SAVE DATA!"), "the missing file's message");
+    std::vector<std::string> keys;
+    for (const auto& e : f.system.entries(SystemOptions::GAME)) keys.push_back(e.key);
+    // source: by hand: GAME lists ORIGINAL BUGS, GAME TEXTS, EXIT (no MEMORY CARD slot)
+    t.expect(keys == std::vector<std::string>{"gameplay_fixes", "game_texts", ""}, "GAME has no card slot");
+    Fixture off(false);
+    t.expect_equal(off.flow->options->item_label(0, 4), std::string("MEMORY CARD"), "off: the original's name");
+}
+
 T3_TEST(system_options, off_keeps_the_remakes_menu) {
     if (!t.require(t3test::imported("tables/flow.json"))) return;
     Fixture f(false);

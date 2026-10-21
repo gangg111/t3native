@@ -104,8 +104,19 @@ public:
     bool system_values = false;              // a list of settings (GAME OPTION's look), else of entries
     std::vector<SystemRow> system_rows;
     gd::Int system_cursor = 0;
+    // Native, with it: the memory card's names as the phone's save data (no card, no slot).
+    static inline const gd::Dict<std::string, std::string> SAVE_NAMES = [] {
+        gd::Dict<std::string, std::string> d;
+        d.set("MEMORY CARD", "SAVE DATA");
+        d.set("CARD SAVE", "SAVE");
+        d.set("CARD LOAD", "LOAD");
+        d.set("NO TEKKEN3 FILE!", "NO SAVE DATA!");
+        return d;
+    }();
     // An item's label as shown (SYSTEM OPTION for DISPLAY ADJUST when it is on).
     std::string item_label(gd::Int p, gd::Int i);
+    // A page title or card message as shown (SAVE_NAMES when SYSTEM OPTION is on).
+    std::string shown(const std::string& text) const;
 
     // _init(flow): both players' key records with their rows.
     explicit OptionsScreen(GameFlow* flow);

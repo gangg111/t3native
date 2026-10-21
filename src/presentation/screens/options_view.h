@@ -46,6 +46,8 @@ public:
 
     gfx::TextureRef picture_texture;
     gd::Arr<gfx::TextureRef> pads;
+    gfx::TextureRef dualsense;
+    static inline const gfx::Vec2 PAD_SIZE{144, 136};   // the PS1 pad picture's size
     gd::Ref<OptionsScreen> options;
     gd::Ref<GameFlow> flow;
     gd::Int frame_count = 0;
@@ -67,6 +69,8 @@ public:
     std::string _rank_format();
     void _name(gd::Int character, float y);
     void _card_message();
+    // The built-in DualSense picture (art/pad_dualsense.png), made once.
+    const gfx::TextureRef& _dualsense();
     // FUN_800DF630: both players' pad pictures, button actions, VIBRATION, DEFAULT and EXIT.
     void _keys();
     void _item(const std::string& label, bool selected, float x, float y);
