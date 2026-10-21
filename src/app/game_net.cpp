@@ -9,6 +9,7 @@
 #include "core/game/game_progress.h"
 #include "core/game/main_menu.h"
 #include "core/game/options_screen.h"
+#include "core/sim_events.h"
 #include "content/flow_data.h"
 #include "content/text_locale.h"
 #include "core/fight/fight_simulation.h"
@@ -186,6 +187,27 @@ void GameApp::_net_pages(double now) {
         }
         return;
     }
+    // The menu's sounds (MainMenu's cursor and choice, as OPTION MODE's leave): after the page's
+    // input, by what it changed.
+    NetPage page_before = _net_page;
+    gd::Int cursor_before = _net_cursor;
+    bool acted = false;   // a press that changed no page but did something (the Wi-Fi panel, the address dialog)
+    struct Sounds {
+        GameApp& app;
+        NetPage page;
+        gd::Int cursor;
+        bool& acted;
+        bool pressed;
+        ~Sounds() {
+            gd::Int code = 0;
+            if (pressed && (app._net_page != page || acted || app.flow->network_back)) code = MainMenu::SOUND_CHOOSE;
+            else if (app._net_cursor != cursor) code = MainMenu::SOUND_CURSOR;
+            if (code == 0) return;
+            gd::Ref<SimEvents> events = gd::make<SimEvents>();
+            events->add(SimEvents::SOUND, -1, code, 0);
+            app.audio_director->handle(events);
+        }
+    } sounds{*this, page_before, cursor_before, acted, ok || back};
     switch (_net_page) {
         case NetPage::CHOICE:
             if (up || down) _net_cursor ^= 1;
@@ -194,6 +216,7 @@ void GameApp::_net_pages(double now) {
                 _net_page = NetPage::NONE;
             } else if (ok && !net::lan_available()) {
                 Platform::open_wifi_panel();
+                acted = true;
             } else if (ok && _net_cursor == 0) {
                 net::NetSession::Start s;
                 s.seed = new_seed();
@@ -233,7 +256,7 @@ void GameApp::_net_pages(double now) {
                 _net_page = NetPage::CHOICE;
                 _net_cursor = 1;
             } else if (ok && _net_cursor == items - 1) {
-                if (Platform::ask_text("HOST ADDRESS", "")) _net_asking = true;
+                if (Platform::ask_text("HOST ADDRESS", "")) _net_asking = acted = true;
             } else if (ok && _net_cursor < offers) {
                 _net.join(_net.offers()[static_cast<size_t>(_net_cursor)].address, mine(), now);
                 _net_page = NetPage::CONNECTING;
