@@ -51,6 +51,10 @@ struct Program {
         int location;
         int unit;                    // samplers: texture unit
         std::vector<float> fallback; // the default value
+        // An array read from a texture (ShaderUniform::as_texture): its RGBA32F texture, made by the
+        // renderer for this GL context (`texture_generation`).
+        mutable unsigned texture = 0;
+        mutable unsigned texture_generation = 0;
     };
     std::vector<User> user;
     // Built-in uniforms' locations (-1 when the stage does not use them).

@@ -371,7 +371,7 @@ std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& na
     int unit = 0;
     for (const ShaderUniform& u : p->shader.uniforms) {
         Program::User user{&u, loc(u.glsl.c_str()), -1, parse_default(u)};
-        if (u.type == "sampler2D") {
+        if (u.type == "sampler2D" || u.as_texture) {
             user.unit = unit++;
             if (user.location >= 0) glUniform1i(user.location, user.unit);
         }

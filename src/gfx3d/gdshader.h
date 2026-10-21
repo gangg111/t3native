@@ -32,7 +32,13 @@ struct ShaderUniform {
     bool source_color = false;      // sampled colours are sRGB: decoded to linear
     Filter filter = Filter::DEFAULT;
     int repeat = -1;                // -1 default, 0 repeat_disable, 1 repeat_enable
+    // A large vec4 array (TEXTURE_ARRAY_MIN or more) read from a one-row RGBA32F texture instead
+    // (`highp sampler2D` of the same name, `name[i]` as texelFetch): Adreno drivers drew the fighters'
+    // skinning (84 rows indexed in the vertex stage) wrong without a word; textures are what engines
+    // use there. The renderer uploads the array into it each draw.
+    bool as_texture = false;
 };
+constexpr int TEXTURE_ARRAY_MIN = 64;
 
 struct ShaderVarying {
     std::string qualifier;          // "", "flat", "smooth"
@@ -66,5 +72,9 @@ using IncludeReader = std::function<std::string(const std::string& path)>;
 // std::runtime_error with the line on anything it cannot read.
 GdShader parse_gdshader(const std::string& source, const std::map<std::string, std::string>& defines,
                         const IncludeReader& include);
+
+// `name[expr]` (brackets matched, the whole word only) as `texelFetch(name, ivec2(int(expr), 0), 0)`:
+// a uniform array read from its texture (ShaderUniform::as_texture).
+std::string array_reads_as_fetches(const std::string& code, const std::string& name);
 
 }  // namespace t3::gfx3d

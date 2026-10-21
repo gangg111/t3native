@@ -523,12 +523,63 @@ const ShaderValue* param(const Look& look, const std::string& name) {
     return it != look.params.end() ? &it->second : nullptr;
 }
 
+std::vector<float> uniform_values(const Program::User& u, const ShaderValue* v);
+
 // A user uniform: the material's value (a source_color colour decoded to linear, as Godot does), or
 // the shader's default.
 void set_uniform(const Program::User& u, const ShaderValue* v) {
     const ShaderUniform& s = *u.uniform;
     int loc = u.location;
     if (loc < 0 || s.type == "sampler2D") return;
+    std::vector<float> f = uniform_values(u, v);
+    if (f.empty()) return;
+    const std::string& t = s.type;
+    int count = std::max(s.array_size, 1);
+    if (t == "float") glUniform1fv(loc, std::min<int>(count, static_cast<int>(f.size())), f.data());
+    else if (t == "int" || t == "bool" || t == "uint") {
+        std::vector<int> iv(f.begin(), f.end());
+        glUniform1iv(loc, std::min<int>(count, static_cast<int>(iv.size())), iv.data());
+    } else if (t == "vec2") glUniform2fv(loc, std::min<int>(count, static_cast<int>(f.size() / 2)), f.data());
+    else if (t == "vec3") {
+        if (f.size() == 4 && count == 1) f.resize(3);
+        glUniform3fv(loc, std::min<int>(count, static_cast<int>(f.size() / 3)), f.data());
+    } else if (t == "vec4") {
+        if (f.size() == 3) f.push_back(1.0f);
+        glUniform4fv(loc, std::min<int>(count, static_cast<int>(f.size() / 4)), f.data());
+    } else if (t == "ivec2" || t == "ivec3" || t == "ivec4") {
+        std::vector<int> iv(f.begin(), f.end());
+        if (t == "ivec2") glUniform1iv(loc, 0, nullptr);
+        (void)iv;   // no ivec uniforms in the remake's shaders
+    } else if (t == "mat3" && f.size() >= 9) glUniformMatrix3fv(loc, 1, GL_FALSE, f.data());
+    else if (t == "mat4" && f.size() >= 16) glUniformMatrix4fv(loc, 1, GL_FALSE, f.data());
+}
+
+// An array read from a texture (ShaderUniform::as_texture): its values into the program's one-row
+// RGBA32F texture (made for this GL context), bound to the uniform's unit.
+void set_array_texture(const Program::User& u, const ShaderValue* v) {
+    int n = u.uniform->array_size;
+    std::vector<float> f = uniform_values(u, v);
+    f.resize(static_cast<size_t>(n) * 4, 0.0f);
+    glActiveTexture(GL_TEXTURE0 + u.unit);
+    if (u.texture == 0 || u.texture_generation != gl_generation()) {
+        glGenTextures(1, &u.texture);
+        glBindTexture(GL_TEXTURE_2D, u.texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, n, 1, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        u.texture_generation = gl_generation();
+    } else {
+        glBindTexture(GL_TEXTURE_2D, u.texture);
+    }
+    glBindSampler(u.unit, 0);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, n, 1, GL_RGBA, GL_FLOAT, f.data());
+}
+
+// The floats of a user uniform's value (the material's, else the shader's default).
+std::vector<float> uniform_values(const Program::User& u, const ShaderValue* v) {
+    const ShaderUniform& s = *u.uniform;
     std::vector<float> f;
     if (v && !std::holds_alternative<std::monostate>(*v)) {
         if (const bool* b = std::get_if<bool>(v)) f = {*b ? 1.0f : 0.0f};
@@ -554,26 +605,7 @@ void set_uniform(const Program::User& u, const ShaderValue* v) {
         }
     }
     if (f.empty()) f = u.fallback;
-    if (f.empty()) return;
-    const std::string& t = s.type;
-    int count = std::max(s.array_size, 1);
-    if (t == "float") glUniform1fv(loc, std::min<int>(count, static_cast<int>(f.size())), f.data());
-    else if (t == "int" || t == "bool" || t == "uint") {
-        std::vector<int> iv(f.begin(), f.end());
-        glUniform1iv(loc, std::min<int>(count, static_cast<int>(iv.size())), iv.data());
-    } else if (t == "vec2") glUniform2fv(loc, std::min<int>(count, static_cast<int>(f.size() / 2)), f.data());
-    else if (t == "vec3") {
-        if (f.size() == 4 && count == 1) f.resize(3);
-        glUniform3fv(loc, std::min<int>(count, static_cast<int>(f.size() / 3)), f.data());
-    } else if (t == "vec4") {
-        if (f.size() == 3) f.push_back(1.0f);
-        glUniform4fv(loc, std::min<int>(count, static_cast<int>(f.size() / 4)), f.data());
-    } else if (t == "ivec2" || t == "ivec3" || t == "ivec4") {
-        std::vector<int> iv(f.begin(), f.end());
-        if (t == "ivec2") glUniform1iv(loc, 0, nullptr);
-        (void)iv;   // no ivec uniforms in the remake's shaders
-    } else if (t == "mat3" && f.size() >= 9) glUniformMatrix3fv(loc, 1, GL_FALSE, f.data());
-    else if (t == "mat4" && f.size() >= 16) glUniformMatrix4fv(loc, 1, GL_FALSE, f.data());
+    return f;
 }
 
 }  // namespace
@@ -763,7 +795,9 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         // The material's uniforms and textures.
         for (const Program::User& u : p.user) {
             const ShaderValue* val = param(it.look, u.uniform->name);
-            if (u.uniform->type == "sampler2D") {
+            if (u.uniform->as_texture) {
+                set_array_texture(u, val);
+            } else if (u.uniform->type == "sampler2D") {
                 gfx::TextureRef tex;
                 if (val) {
                     if (const auto* t = std::get_if<gfx::TextureRef>(val)) tex = *t;

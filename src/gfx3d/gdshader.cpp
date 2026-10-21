@@ -308,7 +308,43 @@ GdShader parse_gdshader(const std::string& source, const std::map<std::string, s
     s.alpha_scissor = assigns(s.fragment, "ALPHA_SCISSOR_THRESHOLD");
     s.writes_position = assigns(s.vertex, "POSITION");
     for (ShaderVarying& v : s.varyings) v.from_vertex = mentions(s.vertex, v.name);
+    for (ShaderUniform& u : s.uniforms) {
+        if (u.type != "vec4" || u.array_size < TEXTURE_ARRAY_MIN) continue;
+        u.as_texture = true;
+        std::string decl = "uniform vec4 " + u.glsl + "[" + std::to_string(u.array_size) + "];\n";
+        size_t at = s.common.find(decl);
+        if (at != std::string::npos) s.common.replace(at, decl.size(), "uniform highp sampler2D " + u.glsl + ";\n");
+        for (std::string* code : {&s.common, &s.vertex, &s.fragment, &s.light}) *code = array_reads_as_fetches(*code, u.glsl);
+    }
     return s;
+}
+
+std::string array_reads_as_fetches(const std::string& code, const std::string& name) {
+    std::string out;
+    size_t i = 0;
+    while (i < code.size()) {
+        size_t at = code.find(name, i);
+        if (at == std::string::npos) break;
+        bool word_start = at == 0 || !(std::isalnum(static_cast<unsigned char>(code[at - 1])) || code[at - 1] == '_');
+        size_t k = at + name.size();
+        while (k < code.size() && (code[k] == ' ' || code[k] == '\t')) ++k;
+        bool word_end = k >= code.size() || !(std::isalnum(static_cast<unsigned char>(code[at + name.size()])) || code[at + name.size()] == '_');
+        if (!word_start || !word_end || k >= code.size() || code[k] != '[') {
+            out += code.substr(i, at + name.size() - i);
+            i = at + name.size();
+            continue;
+        }
+        int depth = 0;
+        size_t j = k;
+        for (; j < code.size(); ++j) {
+            if (code[j] == '[') ++depth;
+            else if (code[j] == ']' && --depth == 0) break;
+        }
+        if (j >= code.size()) fail("unbalanced brackets after " + name);
+        out += code.substr(i, at - i) + "texelFetch(" + name + ", ivec2(int(" + code.substr(k + 1, j - k - 1) + "), 0), 0)";
+        i = j + 1;
+    }
+    return out + code.substr(i);
 }
 
 }  // namespace t3::gfx3d

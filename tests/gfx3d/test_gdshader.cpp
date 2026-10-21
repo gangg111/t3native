@@ -105,6 +105,20 @@ T3_TEST(gdshader, reserved_words_are_renamed) {
     t.expect(u.fragment.find("vec3(t3r_filter)") != std::string::npos, "body renamed");
 }
 
+T3_TEST(gdshader, large_arrays_read_from_a_texture) {
+    GdShader s = parse_gdshader(embedded("res://presentation/fighter/fighter.gdshader"), FORWARD, embedded);
+    // source: fighter_skin.gdshaderinc: bone_rows[JOINT_ROWS], 84 >= TEXTURE_ARRAY_MIN
+    const ShaderUniform* rows = s.uniform("bone_rows");
+    t.expect(rows && rows->as_texture && rows->array_size == 84, "bone_rows read from a texture");
+    t.expect(s.common.find("uniform highp sampler2D bone_rows;") != std::string::npos, "declared as a highp sampler");
+    t.expect(!std::regex_search(s.common, std::regex("bone_rows\\s*\\[")), "no array reads left");
+    // source: by hand: fighter_skin.gdshaderinc line 57's `bone_rows[3 * j]`
+    t.expect(s.common.find("texelFetch(bone_rows, ivec2(int(3 * j), 0), 0)") != std::string::npos, "a read as a fetch");
+    // source: by hand: nested brackets and other words that start with the name
+    t.expect_equal(array_reads_as_fetches("a[b[i]] + ab[1] + a [2]", "a"),
+                   std::string("texelFetch(a, ivec2(int(b[i]), 0), 0) + ab[1] + texelFetch(a, ivec2(int(2), 0), 0)"), "matching brackets");
+}
+
 T3_TEST(gdshader, remake_other_shaders) {
     for (const char* path : {"res://presentation/fighter/fighter_double_sided.gdshader", "res://presentation/stage/floor.gdshader",
                              "res://presentation/stage/panorama.gdshader", "res://presentation/effects/effect_object.gdshader",
