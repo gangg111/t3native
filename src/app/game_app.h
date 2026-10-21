@@ -130,6 +130,13 @@ public:
         return true;
 #endif
     }
+    // Native: something player 2 can play with: a device already theirs, the keyboard (its second
+    // layout), a second pad, or a pad beside the touch controls. Without it the game's pad mask
+    // (0x800A964C) says one controller and the main menu passes VS MODE over.
+    bool _second_input() const {
+        return Pads.devices[1] != InputRouter::NO_DEVICE || Pads.has_keyboard() || _joypads >= 2 ||
+               (_joypads >= 1 && touch.visible);
+    }
     // Back closes the touch layout's edit (as its Done) before it reaches the game.
     void back() override {
         // Native: Back closes the own button's wizard (CANCEL), else the layout edit (DONE).

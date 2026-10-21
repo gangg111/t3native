@@ -722,6 +722,8 @@ void GameApp::_step(const gd::PI32& step_pads) {
     bool waiting = flow->movie_blocking;
     gd::Int handled = waiting ? flow->sim->events->items.size() : 0;
     bool in_options = flow->state == GameFlow::State::OPTIONS;
+    // A trace replay keeps the recorded two controllers.
+    if (!_replay) flow->sim->pads->connected = _second_input() ? 3 : 1;
     flow->step(pads);
     // Leaving OPTIONS saves the options (ProgressCard): the game would keep them until its next
     // auto save.
