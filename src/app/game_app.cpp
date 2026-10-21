@@ -496,6 +496,7 @@ void GameApp::resize(int width, int height, const SafeArea& safe) {
 
 void GameApp::frame(double now) {
     if (!flow) return;
+    double cpu_start = Platform::now();   // the performance log's CPU time (`now` may be a fixed step)
     // Native: the name of a touch button being typed (Platform::ask_text's dialog).
     if (touch.wizard && touch.wizard->asking) {
         std::string text;
@@ -519,8 +520,22 @@ void GameApp::frame(double now) {
     // Engine.get_physics_interpolation_fraction(): how far the display time is past the last step
     // (step done - 1 ran at _start_time + (done - 1) / 60), 0 to 1.
     _fraction = std::clamp((now - _start_time) * 60.0 + TICK_PHASE - static_cast<double>(done - 1), 0.0, 1.0);
+    bool measured = Settings.flag("perf_log") && !_replay;
+    if (measured) gpu_timer.begin();
     _process();
     _render();
+    if (!measured) {
+        perf_log.reset();
+        return;
+    }
+    gpu_timer.end();
+    // Native: the performance log: this frame's CPU time from the frame's start, the GPU times
+    // back so far, and a line every PerfLog::WINDOW seconds.
+    double elapsed = now - _start_time;
+    perf_log.frame(elapsed, (Platform::now() - cpu_start) * 1000.0);
+    gpu_timer.collect(perf_log.gpu_ms);
+    std::string line = perf_log.take(elapsed, static_cast<int>(flow->state));
+    if (!line.empty()) Platform::perf_line(line);
 }
 
 void GameApp::_physics_process() {

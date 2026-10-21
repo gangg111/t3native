@@ -69,7 +69,7 @@ std::vector<SystemOptions::Entry> SystemOptions::entries(gd::Int list) const {
             for (const char* key : {"volume_music", "volume_sfx", "volume_voices", "volume_system", "vibration"}) setting(key);
             break;
         case GAME:
-            for (const char* key : {"gameplay_fixes", "game_texts"}) setting(key);
+            for (const char* key : {"gameplay_fixes", "game_texts", "perf_log"}) setting(key);
             break;
         case CONTROLS:
             setting("touch_controls");

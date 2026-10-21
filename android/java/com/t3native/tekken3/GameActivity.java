@@ -2,7 +2,23 @@ package com.t3native.tekken3;
 
 import android.app.AlertDialog;
 import android.app.NativeActivity;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.MediaStore;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import android.os.CombinedVibration;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -130,6 +146,65 @@ public class GameActivity extends NativeActivity {
         } catch (RuntimeException e) {
             // A pad gone mid-call, or one whose driver refuses: the game goes on without rumble.
         }
+    }
+
+    /**
+     * Called from the game thread every few seconds: a performance log line, written on its own
+     * thread (a write to shared storage can take milliseconds). The first one makes
+     * t3native_perf_<time>.txt in Downloads (MediaStore, Android 10+; before, the app's own files
+     * folder) with the phone's name, kept open; each line gets the battery's temperature and the
+     * thermal headroom (Android 11+: 1.0 is where the system starts to slow the phone down).
+     */
+    public void perfLine(final String line) {
+        perfWriter.execute(() -> {
+            try {
+                if (perfOut == null) perfOut = openPerfFile();
+                if (perfOut == null) return;
+                String text = line + " " + temperatures() + "\n";
+                perfOut.write(text.getBytes(StandardCharsets.UTF_8));
+                perfOut.flush();
+            } catch (Exception e) {
+                perfOut = null;   // tried again with the next line
+            }
+        });
+    }
+
+    private final ExecutorService perfWriter = Executors.newSingleThreadExecutor();
+    private OutputStream perfOut;
+
+    private OutputStream openPerfFile() throws Exception {
+        String name = "t3native_perf_" + new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ROOT).format(new Date()) + ".txt";
+        OutputStream out;
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return null;
+            out = getContentResolver().openOutputStream(uri, "w");
+        } else {
+            out = new FileOutputStream(new File(getExternalFilesDir(null), name));
+        }
+        if (out == null) return null;
+        String head = "t3native performance log: " + Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE
+                + ", display " + getWindowManager().getDefaultDisplay().getRefreshRate() + " Hz\n"
+                + "frame = median/longest interval, jank = intervals over 1.5 x the median, cpu = mean/95%/longest,"
+                + " gpu = mean/longest, battery in C, headroom 1.0 = throttling\n";
+        out.write(head.getBytes(StandardCharsets.UTF_8));
+        return out;
+    }
+
+    private String temperatures() {
+        StringBuilder s = new StringBuilder();
+        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        int tenths = battery != null ? battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE) : Integer.MIN_VALUE;
+        s.append("battery=").append(tenths == Integer.MIN_VALUE ? "-" : String.format(Locale.ROOT, "%.1fC", tenths / 10.0));
+        if (Build.VERSION.SDK_INT >= 30) {
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            float headroom = power != null ? power.getThermalHeadroom(0) : Float.NaN;
+            s.append(" headroom=").append(Float.isNaN(headroom) ? "-" : String.format(Locale.ROOT, "%.2f", headroom));
+        }
+        return s.toString();
     }
 
     /** Called from the game thread: the answer once, then null again. */

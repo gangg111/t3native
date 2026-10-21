@@ -51,6 +51,10 @@ void vibrate(int milliseconds, int strength);   // strength 1 ... 255
 // A pad's own motors (weak / strong 0 ... 255) for `milliseconds`; all 0 stops them. Nothing on a
 // pad without motors.
 void pad_rumble(int device, int weak, int strong, int milliseconds);
+// A performance log line (PerfLog), written out on another thread: Android adds the phone's
+// temperature and appends it to t3native_perf_<time>.txt in Downloads; the host to perf.txt in the
+// user folder.
+void perf_line(const std::string& line);
 double now();
 // A line of text typed by the player (Android: a dialog with the system keyboard), asked with the
 // text so far; false when there is no text input. The answer arrives later through `poll_text`:

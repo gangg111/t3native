@@ -523,6 +523,18 @@ void pad_rumble(int device, int weak, int strong, int milliseconds) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// GameActivity.perfLine: the activity's writer thread adds the temperature and appends the line.
+void perf_line(const std::string& line) {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    static jmethodID m = nullptr;
+    if (env && !m) m = activity_method(env, "perfLine", "(Ljava/lang/String;)V");
+    if (!m) return;
+    jstring s = env->NewStringUTF(line.c_str());
+    env->CallVoidMethod(g_android->activity->clazz, m, s);
+    env->DeleteLocalRef(s);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
 // pollText: null while the dialog is open, "1" + the text after OK, "0" after Cancel.
 TextAnswer poll_text(std::string& text) {
     if (!g_text_asked) return TEXT_NONE;

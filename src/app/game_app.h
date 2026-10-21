@@ -44,7 +44,9 @@
 #include "presentation/screens/screen_mask.h"
 #include "presentation/screens/select_view.h"
 #include "presentation/screens/settings_button.h"
+#include "app/perf_log.h"
 #include "app/system_options.h"
+#include "gfx/gpu_timer.h"
 #include "presentation/screens/settings_view.h"
 #include "presentation/screens/vs_view.h"
 
@@ -165,6 +167,8 @@ public:
     TouchControls touch;         // game.gd's `touch` (with the native layout edit)
     SettingsView settings_view;  // native: opened only for the keyboard's keys (SYSTEM OPTION's KEYBOARD KEYS)
     SystemOptions system_options;   // native: the settings as OPTION MODE's SYSTEM OPTION
+    PerfLog perf_log;               // native: the performance log (setting perf_log)
+    gfx::GpuTimer gpu_timer;
     // The 60 Hz steps due `elapsed` seconds after the first frame (that one runs step 1). The step
     // boundaries sit a quarter step after the display's refreshes: at 60 and 120 Hz the refreshes
     // fall exactly on them, and the clock's jitter (about a millisecond) gave a refresh no step and

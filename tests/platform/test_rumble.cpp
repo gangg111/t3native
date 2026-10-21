@@ -19,6 +19,7 @@ std::vector<std::array<int, 4>> g_pad_pulses;   // the Platform::pad_rumble call
 // t3tests links no platform: its side of the app, recording the motor pulses.
 namespace t3::Platform {
 void vibrate(int milliseconds, int strength) { g_pulses.emplace_back(milliseconds, strength); }
+void perf_line(const std::string&) {}
 void pad_rumble(int device, int weak, int strong, int milliseconds) {
     g_pad_pulses.push_back({device, weak, strong, milliseconds});
 }

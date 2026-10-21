@@ -111,6 +111,7 @@ const gd::Dict<std::string, std::string>& english() {
         t.set("SETTING_TOUCH_SIZE", "Touch button size");
         t.set("SETTING_TOUCH_OPACITY", "Touch button opacity");
         t.set("SETTING_TOUCH_HAPTICS", "Touch vibration");
+        t.set("SETTING_PERF_LOG", "Performance log");
         t.set("SETTING_TOUCH_DIRECTIONS", "Touch directions");
         t.set("SETTINGS_VALUE_DPAD", "D-pad");
         t.set("SETTINGS_VALUE_STICK", "Stick");

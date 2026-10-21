@@ -72,6 +72,8 @@ public:
         // as a finger lands on one.
         d.set("touch_opacity", Entry{gd::Int(55), {gd::Int(25), gd::Int(40), gd::Int(55), gd::Int(70), gd::Int(85), gd::Int(100)}});
         d.set("touch_haptics", Entry{true, {true, false}});
+        // Native: the performance log (PerfLog) in Downloads.
+        d.set("perf_log", Entry{true, {true, false}});
         // Native: the left control: a fixed cross (D-pad) or the remake's stick that centres where the
         // finger lands.
         d.set("touch_directions", Entry{S("dpad"), {S("dpad"), S("stick")}});
