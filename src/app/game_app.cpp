@@ -22,6 +22,7 @@
 #include "core/game/match_flow.h"
 #include "core/scripted/enbu_performance.h"
 #include "presentation/camera/camera_rig.h"
+#include "presentation/fighter/arcade_attachments.h"
 #include "presentation/fighter/fighter_view.h"
 #include "presentation/render_quality.h"
 #include "presentation/scene/enbu_view.h"
@@ -63,6 +64,10 @@ namespace t3 {
 bool GameApp::start(const std::string& data_root, const std::string& user_dir) {
     root = data_root;
     user_dir_ = user_dir;
+    // The views that read assets by path themselves (Assets.path in the remake): the arcade
+    // attachments' tables (pose, fighter) and the pause menu's picture.
+    ArcadeAttachments::assets_root = root;
+    pause_view.assets_root = root;
     if (!gd::file_exists(gd::path_join(root, "tables/flow.json"))) {
         Log::error("game: no converted game data in " + root + " (run tools/remake_import/convert.py)");
         return false;
@@ -794,10 +799,15 @@ void GameApp::_show() {
         _fight_view_due = false;
         _model_loads = flow->sim->model_loads.duplicate();
         _build_fight_view();
+        _fight_view_mode = flow->region->mode;
     } else if (flow->sim->model_loads != _model_loads) {
         _replace_fighters();
     }
-    bool fighting = fight_state && fight_view != nullptr && (state == GameFlow::State::PREPARE || sub >= 7);
+    // Native: not a fight of another mode. A mode chosen on the main menu passes PREPARE on its way
+    // to the character select, and the remake showed the last fight there (the demonstration's
+    // after the attract loop: its fighters flashed for a few frames).
+    bool fighting = fight_state && fight_view != nullptr && (state == GameFlow::State::PREPARE || sub >= 7) &&
+                    gd::Int(flow->region->mode) == _fight_view_mode;
     if (fight_view != nullptr) {
         fight_view->visible = fighting;
         if (fighting) {

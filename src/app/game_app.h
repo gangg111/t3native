@@ -181,6 +181,7 @@ private:
     gd::Int _fight_loads = -1;
     gd::PI32 _model_loads;        // FightSimulation.model_loads the fight view shows
     bool _fight_view_due = false;
+    gd::Int _fight_view_mode = -1;   // native: the mode (ModeRegion::mode) the fight view was built in
     bool _sound_logged = false;   // native: the first key-on was written to the log
     void _set_audio_fighters();
     void _rumble();
