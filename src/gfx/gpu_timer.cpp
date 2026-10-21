@@ -81,7 +81,9 @@ void GpuTimer::collect(std::vector<double>& out) {
         if (done && !disjoint) {
             uint64_t ns = 0;
             g_result(ids_[i], GL_QUERY_RESULT, &ns);
-            out.push_back(static_cast<double>(ns) / 1e6);
+            // A driver's occasional garbage (a phone's log had 92233720368 ms) would swamp the
+            // window's mean: a frame's part is never a second long.
+            if (ns < 1000000000ULL) out.push_back(static_cast<double>(ns) / 1e6);
         }
         // A disjoint period: the results in flight are not to be trusted (a pending one is
         // dropped once it is done, so its name can be used again).
