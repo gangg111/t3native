@@ -25,6 +25,11 @@ public:
     static constexpr float BAR_RIGHT_CAP = 150.0f;   // the second cap at x + 0x96
     static inline const gfx::Rect2 BAR_FILL_SOURCE{0, 0, 1, 24};   // one texel column, stretched
     static constexpr float TIMER_UNITS_X = 184.0f;
+    // Native: the HUD is laid out about x = 184 (the timer, the bars at 10 and 202 + 156), the
+    // scene's centre is 192 (HudFrame: the 368 columns shown from x = 8). The game showed it 8
+    // columns left of the centre, which a wide window makes plain (the left bar at its edge): the
+    // HUD is moved onto the scene's centre.
+    static constexpr float CENTRE_SHIFT = 8.0f;
     static constexpr float TIMER_STEP = 15.0f;
     static constexpr float TIMER_Y = 22.0f;
     static inline const gfx::Vec2 DIGIT{16, 46};

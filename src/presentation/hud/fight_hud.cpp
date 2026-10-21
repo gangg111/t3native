@@ -48,7 +48,7 @@ void FightHud::place(gfx::Rect2 frame_rect) {
 }
 
 gfx::Vec2 FightHud::point(float x, float y) const {
-    return HudFrame::point(box, x, y);
+    return HudFrame::point(box, x + CENTRE_SHIFT, y);
 }
 
 gfx::Vec2 FightHud::unit_scale() const {
