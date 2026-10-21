@@ -1,0 +1,10 @@
+/build/
+# Game data never enters git (converted assets, traces, extracted discs).
+*.bin
+*.cue
+*.gz
+/imported/
+/work/
+# The launcher icon is the game's logo (Namco's picture): it stays on the disk only.
+/android/res/mipmap-*/
+__pycache__/

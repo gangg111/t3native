@@ -1,0 +1,4 @@
+stb_vorbis.c: nothings/stb @ 1ee679ca2ef753a528db5ba6801e1067b40481b8 (public domain / MIT, license at the end of the file)
+pl_mpeg.h: phoboslab/pl_mpeg @ c871f2be022ece7ef4f64230b4fb8e1fb9eb6023 (MIT, header comment)
+stb_truetype.h: nothings/stb @ 1ee679ca2ef753a528db5ba6801e1067b40481b8, v1.25 (public domain / MIT, license at the end of the file), sha256 7ccdb4b9365cffa0b8d002943cbfa3441ed98fabec0f7ef34a09b9f1cb72fae0
+fonts/OpenSans-SemiBold.ttf: googlefonts/opensans @ bd7e37632246368c60fdcbd374dbf9bad11969b6 fonts/ttf (SIL OFL 1.1, fonts/OFL.txt; the face Godot's default theme uses), sha256 4a413711684a9dd564ef0f1c10cb62b5d9f7eb6df2cff962f5341a6ecd5f64ae
