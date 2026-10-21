@@ -48,6 +48,9 @@ public:
 // The platform's side the app may call.
 namespace Platform {
 void vibrate(int milliseconds, int strength);   // strength 1 ... 255
+// A pad's own motors (weak / strong 0 ... 255) for `milliseconds`; all 0 stops them. Nothing on a
+// pad without motors.
+void pad_rumble(int device, int weak, int strong, int milliseconds);
 double now();
 // A line of text typed by the player (Android: a dialog with the system keyboard), asked with the
 // text so far; false when there is no text input. The answer arrives later through `poll_text`:

@@ -13,9 +13,8 @@
 // HANDHELD_RENEW frames while it holds; a 1 ms pulse cuts it short when the level falls to zero.
 //
 // Native: Input.vibrate_handheld(ms, amplitude) is Platform::vibrate(ms, amplitude 0-1 as
-// strength 1-255). Input.start_joy_vibration has no platform call yet: a pad's two motors go to the
-// same Platform::vibrate at the stronger level (TODO: per-device pad rumble); stop_joy_vibration
-// sends nothing (the last pulse is HOLD_FRAMES long and ends by itself).
+// strength 1-255). A pad's two motors are its own (Platform::pad_rumble: Android's InputDevice
+// vibrators), driven by pulses as below (PAD_PULSE_MS); a pad without motors stays still.
 #include "gd/gd.h"
 
 namespace t3 {
@@ -38,13 +37,25 @@ public:
         bool operator==(const Level& o) const { return x == o.x && y == o.y; }
     };
 
+    // Native: a pad's own motors (Platform::pad_rumble), not the phone's: its level rounded to
+    // eighths, a pulse of PAD_PULSE_MS sent on a change and renewed every PAD_RENEW frames (a pulse a
+    // frame would crowd the Bluetooth link), stopped with a zero pulse when the game stops asking.
+    static constexpr gd::Int PAD_PULSE_MS = 250;
+    static constexpr gd::Int PAD_RENEW = 9;            // frames (150 ms)
+    struct Sent {
+        Level level;
+        gd::Int age = 0;
+    };
+
     gd::Dict<gd::Int, Level> _levels;   // device → Vector2(weak, strong)
+    gd::Dict<gd::Int, Sent> _pads;      // device → the level its motors run now
     double handheld_level = 0.0;        // the phone motor's level running now (0: still)
     gd::Int _handheld_age = 0;          // frames since its last pulse
 
     void set_motors(gd::Int device, bool small_on, gd::Int large);
     void update();
     void _update_handheld(double level);
+    void _update_pad(gd::Int device, Level level);
 };
 
 }  // namespace t3

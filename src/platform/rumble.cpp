@@ -17,10 +17,9 @@ void vibrate_handheld(gd::Int duration_ms, double amplitude) {
     Platform::vibrate(static_cast<int>(duration_ms), std::clamp(strength, 1, 255));
 }
 
-// Input.start_joy_vibration(device, weak, strong, duration): one motor at the stronger level.
-void start_joy_vibration(gd::Int, double weak, double strong, double duration) {
-    vibrate_handheld(static_cast<gd::Int>(std::lround(duration * 1000.0)), std::max(weak, strong));
-}
+double eighths(double v) { return std::ceil(v * Rumble::HANDHELD_STEPS) / Rumble::HANDHELD_STEPS; }
+
+int strength(double v) { return static_cast<int>(std::lround(std::clamp(v, 0.0, 1.0) * Rumble::LARGE_MAX)); }
 
 }  // namespace
 
@@ -37,14 +36,34 @@ void Rumble::update() {
         Level level = _levels.at(device);
         if (device == InputRouter::TOUCH) {
             handheld = std::max(level.x * SMALL_SHARE, level.y);
-        } else if (level == Level{}) {
-            // Input.stop_joy_vibration(device): nothing to send natively.
         } else {
-            start_joy_vibration(device, level.x, level.y, FRAME_SECONDS * HOLD_FRAMES);
+            _update_pad(device, level);
         }
+    }
+    // A pad the game no longer asks about (its player gone): stopped.
+    for (gd::Int device : _pads.keys()) {
+        if (!_levels.has(device)) _update_pad(device, Level{});
     }
     _levels.clear();
     _update_handheld(handheld);
+}
+
+void Rumble::_update_pad(gd::Int device, Level level) {
+    level = Level{eighths(level.x), eighths(level.y)};
+    if (level == Level{}) {
+        if (_pads.has(device)) {
+            Platform::pad_rumble(static_cast<int>(device), 0, 0, 0);
+            _pads.erase(device);
+        }
+        return;
+    }
+    Sent sent = _pads.has(device) ? _pads.at(device) : Sent{};
+    sent.age += 1;
+    if (!(level == sent.level) || sent.age >= PAD_RENEW) {
+        Platform::pad_rumble(static_cast<int>(device), strength(level.x), strength(level.y), static_cast<int>(PAD_PULSE_MS));
+        sent = Sent{level, 0};
+    }
+    _pads.set(device, sent);
 }
 
 void Rumble::_update_handheld(double level) {

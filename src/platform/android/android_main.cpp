@@ -205,8 +205,12 @@ int32_t on_input(android_app*, AInputEvent* e) {
     if (type == AINPUT_EVENT_TYPE_KEY) {
         int32_t key = AKeyEvent_getKeyCode(e);
         bool down = AKeyEvent_getAction(e) == AKEY_EVENT_ACTION_DOWN;
-        if (key == AKEYCODE_BACK) {
+        // Native: a pad's keys stay the game's. Some Xbox pad firmwares send their View button as
+        // Back: from a pad it is SELECT, as the button where a DualSense has Create.
+        if (key == AKEYCODE_BACK && is_pad_source(source)) key = AKEYCODE_BUTTON_SELECT;
+        if (key == AKEYCODE_BACK || key == AKEYCODE_BUTTON_MODE) {
             // The system's Back (button or gesture) is the game's Escape; the app does not close on it.
+            // So is a pad's PS / Xbox button, where the system lets the app have it.
             if (down && AKeyEvent_getRepeatCount(e) == 0) g_app->back();
             return 1;
         }
@@ -245,6 +249,9 @@ int32_t on_input(android_app*, AInputEvent* e) {
         h[1] = hy;
         return 1;
     }
+    // Native: fingers on the screen only; a DualSense's touchpad (a mouse or touchpad source) is not
+    // the touch controls'.
+    if ((source & AINPUT_SOURCE_TOUCHSCREEN) != AINPUT_SOURCE_TOUCHSCREEN) return 0;
     int32_t action = AMotionEvent_getAction(e);
     int32_t kind = action & AMOTION_EVENT_ACTION_MASK;
     size_t index = static_cast<size_t>((action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT);
@@ -504,6 +511,16 @@ bool ask_text(const std::string& title, const std::string& initial) {
     }
     g_text_asked = true;
     return true;
+}
+
+// GameActivity.padRumble: the pad's own vibrators (android.view.InputDevice), the game thread's.
+void pad_rumble(int device, int weak, int strong, int milliseconds) {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    static jmethodID m = nullptr;
+    if (env && !m) m = activity_method(env, "padRumble", "(IIII)V");
+    if (!m) return;
+    env->CallVoidMethod(g_android->activity->clazz, m, device, weak, strong, milliseconds);
+    if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
 // pollText: null while the dialog is open, "1" + the text after OK, "0" after Cancel.

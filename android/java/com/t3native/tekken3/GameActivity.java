@@ -3,7 +3,12 @@ package com.t3native.tekken3;
 import android.app.AlertDialog;
 import android.app.NativeActivity;
 import android.os.Build;
+import android.os.CombinedVibration;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.text.InputFilter;
+import android.view.InputDevice;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -85,6 +90,46 @@ public class GameActivity extends NativeActivity {
 
     private synchronized void answer(String text) {
         textAnswer = text;
+    }
+
+    /**
+     * Called from the game thread: the pad's own motors (a DualSense's, an Xbox pad's), not the
+     * phone's. weak / strong 0-255 for ms; all 0 stops them. Android 12+ gives a pad's motors one
+     * by one (the first taken as the strong one); before, the pad's single Vibrator gets the
+     * stronger level. A pad without motors stays still.
+     */
+    public void padRumble(int deviceId, int weak, int strong, int ms) {
+        InputDevice device = InputDevice.getDevice(deviceId);
+        if (device == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                VibratorManager manager = device.getVibratorManager();
+                int[] ids = manager.getVibratorIds();
+                if (ids.length == 0) return;
+                if (weak <= 0 && strong <= 0) {
+                    manager.cancel();
+                    return;
+                }
+                CombinedVibration.ParallelCombination both = CombinedVibration.startParallel();
+                if (ids.length == 1) {
+                    both.addVibrator(ids[0], VibrationEffect.createOneShot(ms, Math.max(weak, strong)));
+                } else {
+                    if (strong > 0) both.addVibrator(ids[0], VibrationEffect.createOneShot(ms, strong));
+                    if (weak > 0) both.addVibrator(ids[1], VibrationEffect.createOneShot(ms, weak));
+                }
+                manager.vibrate(both.combine());
+            } else {
+                Vibrator vibrator = device.getVibrator();
+                if (!vibrator.hasVibrator()) return;
+                if (weak <= 0 && strong <= 0) {
+                    vibrator.cancel();
+                } else {
+                    vibrator.vibrate(VibrationEffect.createOneShot(ms, Math.max(weak, strong)));
+                }
+            }
+        } catch (RuntimeException e) {
+            // A pad gone mid-call, or one whose driver refuses: the game goes on without rumble.
+        }
     }
 
     /** Called from the game thread: the answer once, then null again. */

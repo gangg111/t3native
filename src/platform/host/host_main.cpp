@@ -284,6 +284,10 @@ bool save_screenshot(const std::string& path) {
 
 namespace t3::Platform {
 void vibrate(int milliseconds, int strength) { Log::debug("vibrate " + std::to_string(milliseconds) + " ms, " + std::to_string(strength)); }
+void pad_rumble(int device, int weak, int strong, int milliseconds) {
+    Log::debug("pad " + std::to_string(device) + " rumble " + std::to_string(weak) + "/" + std::to_string(strong) + ", " +
+               std::to_string(milliseconds) + " ms");
+}
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now() - g_start).count(); }
 // The host has no dialog: `--text-answer TEXT` answers every question with TEXT (development).
 namespace {
