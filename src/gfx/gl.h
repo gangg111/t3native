@@ -119,7 +119,11 @@
     X(PFNGLPOLYGONOFFSETPROC, glPolygonOffset)                                                        \
     X(PFNGLGETSTRINGIPROC, glGetStringi)                                                              \
     X(PFNGLSAMPLERPARAMETERFPROC, glSamplerParameterf)                                                \
-    X(PFNGLTEXPARAMETERFPROC, glTexParameterf)
+    X(PFNGLTEXPARAMETERFPROC, glTexParameterf)                                                        \
+    X(PFNGLTRANSFORMFEEDBACKVARYINGSPROC, glTransformFeedbackVaryings)                                \
+    X(PFNGLBEGINTRANSFORMFEEDBACKPROC, glBeginTransformFeedback)                                      \
+    X(PFNGLENDTRANSFORMFEEDBACKPROC, glEndTransformFeedback)                                          \
+    X(PFNGLBINDBUFFERBASEPROC, glBindBufferBase)
 
 #ifndef __ANDROID__
 #define T3_GL_DECLARE(type, name) extern type name;

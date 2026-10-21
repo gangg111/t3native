@@ -31,8 +31,9 @@ public:
     static constexpr int GPU_PARTS = 4;
     enum GpuPart { GPU_SHADOW, GPU_SCENE, GPU_POST, GPU_2D };
     std::vector<double> gpu_parts[GPU_PARTS];
-    // The shadow pass's own parts, from every third frame: its clear and each cascade's casters.
-    // The line adds "shadow clear/c0/c1/c2/c3=a/b/c/d/ems" (means).
+    // The shadow pass's own parts, from every third frame: the fighters' captured vertices with the
+    // map's clear, then each cascade's casters. The line adds "shadow capture+clear/c0/c1/c2/c3=
+    // a/b/c/d/ems" (means).
     static constexpr int SHADOW_PARTS = 5;
     std::vector<double> shadow_parts[SHADOW_PARTS];
 

@@ -105,8 +105,19 @@ GlslPair compose_sky(const GdShader& s) {
     return out;
 }
 
+bool capturable(const GdShader& s) {
+    if (s.type != "spatial" || s.writes_position) return false;
+    if (s.vertex.find_first_not_of(" \t\r\n") == std::string::npos) return false;
+    for (const ShaderVarying& var : s.varyings)
+        if (var.from_vertex) return false;
+    return true;
+}
+
 GlslPair compose_glsl(const GdShader& s, Pass pass) {
     if (s.type == "sky") return compose_sky(s);
+    bool fed = pass == Pass::COLOR_FED || pass == Pass::DEPTH_FED;
+    if (pass == Pass::COLOR_FED) pass = Pass::COLOR;
+    if (pass == Pass::DEPTH_FED) pass = Pass::DEPTH;
     GlslPair out;
     std::string common = decode_srgb(s.common, s);
     bool world = s.mode("world_vertex_coords");
@@ -122,6 +133,9 @@ GlslPair compose_glsl(const GdShader& s, Pass pass) {
          "layout(location = 8) in vec4 t3_a_custom3;\nlayout(location = 9) in vec4 t3_a_inst0;\n"
          "layout(location = 10) in vec4 t3_a_inst1;\nlayout(location = 11) in vec4 t3_a_inst2;\n"
          "layout(location = 12) in vec4 t3_a_inst_color;\nlayout(location = 13) in vec4 t3_a_inst_custom;\n";
+    if (fed) v << "layout(location = " << A_FED_VERTEX << ") in vec3 t3_a_fed_vertex;\nlayout(location = " << A_FED_NORMAL
+                << ") in vec3 t3_a_fed_normal;\n";
+    if (pass == Pass::CAPTURE) v << "out vec3 t3_c_vertex;\nout vec3 t3_c_normal;\n";
     v << "uniform mat4 t3_model;\nuniform mat4 t3_view;\nuniform mat4 t3_inv_view;\nuniform mat4 t3_projection;\n"
          "uniform bool t3_instanced;\nuniform vec2 t3_viewport_size;\n";
     v << "out vec3 t3_v_vertex;\nout vec3 t3_v_normal;\nout vec2 t3_v_uv;\nout vec2 t3_v_uv2;\nout vec4 t3_v_color;\n";
@@ -146,7 +160,15 @@ GlslPair compose_glsl(const GdShader& s, Pass pass) {
          "\tMODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);\n"
          "\tINSTANCE_ID = gl_InstanceID;\n\tVERTEX_ID = gl_VertexID;\n\tPOSITION = vec4(0.0);\n\tPOINT_SIZE = 1.0;\n";
     if (world) v << "\tVERTEX = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;\n\tNORMAL = normalize(MODEL_NORMAL_MATRIX * NORMAL);\n";
-    v << "\tt3_user_vertex();\n";
+    if (fed) v << "\tVERTEX = t3_a_fed_vertex;\n\tNORMAL = t3_a_fed_normal;\n";
+    else v << "\tt3_user_vertex();\n";
+    if (pass == Pass::CAPTURE) {
+        // Only what vertex() made, before the view: the fed passes go on from there.
+        v << "\tt3_c_vertex = VERTEX;\n\tt3_c_normal = NORMAL;\n\tgl_Position = vec4(0.0, 0.0, 0.0, 1.0);\n}\n";
+        out.vertex = v.str();
+        out.fragment = std::string(HEADER) + "layout(location = 0) out vec4 t3_frag_color;\nvoid main() { t3_frag_color = vec4(0.0); }\n";
+        return out;
+    }
     if (!skip) {
         if (world)
             v << "\tVERTEX = (VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;\n\tNORMAL = normalize(mat3(VIEW_MATRIX) * NORMAL);\n";
@@ -416,7 +438,8 @@ void save_binary(unsigned id, const std::string& path) {
 std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& name) {
     GlslPair glsl = compose_glsl(shader, pass);
     auto p = std::make_unique<Program>();
-    p->name = name + (pass == Pass::DEPTH ? " [depth]" : " [colour]");
+    static const char* const PASS_NAMES[] = {" [colour]", " [depth]", " [capture]", " [colour, fed]", " [depth, fed]"};
+    p->name = name + PASS_NAMES[static_cast<int>(pass)];
     p->generation = gl_generation();
     p->id = glCreateProgram();
     std::string cached = cache_path(glsl);
@@ -434,6 +457,10 @@ std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& na
         }
         glAttachShader(p->id, vs);
         glAttachShader(p->id, fs);
+        if (pass == Pass::CAPTURE) {
+            const char* outputs[] = {"t3_c_vertex", "t3_c_normal"};
+            glTransformFeedbackVaryings(p->id, 2, outputs, GL_INTERLEAVED_ATTRIBS);
+        }
         if (!cached.empty()) glProgramParameteri(p->id, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
         gfx::gl_programs() += 1;
         glLinkProgram(p->id);
@@ -523,7 +550,7 @@ Program::~Program() {
 }
 
 const Program* program(const std::string& path, const std::map<std::string, std::string>& defines, Pass pass) {
-    std::string key = path + (pass == Pass::DEPTH ? "|depth" : "|color");
+    std::string key = path + "|pass" + std::to_string(static_cast<int>(pass));
     for (const auto& [k, v] : defines) key += "|" + k + "=" + v;
     return cached(key, [&]() -> std::unique_ptr<Program> {
         try {
@@ -538,7 +565,7 @@ const Program* program(const std::string& path, const std::map<std::string, std:
 }
 
 const Program* program_from_code(const std::string& code, Pass pass) {
-    std::string key = std::string(pass == Pass::DEPTH ? "depth|" : "color|") + code;
+    std::string key = "pass" + std::to_string(static_cast<int>(pass)) + "|" + code;
     return cached(key, [&]() -> std::unique_ptr<Program> {
         try {
             return build(parse_gdshader(code, base_defines(), shader_text), pass, "StandardMaterial3D");

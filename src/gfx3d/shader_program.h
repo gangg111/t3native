@@ -20,7 +20,15 @@
 
 namespace t3::gfx3d {
 
-enum class Pass { COLOR, DEPTH };
+// Native: CAPTURE runs only the shader's vertex() on each vertex once and writes VERTEX and NORMAL
+// (as vertex() leaves them) to a transform feedback buffer; COLOR_FED and DEPTH_FED read them from
+// there (attributes A_FED_VERTEX, A_FED_NORMAL) instead of running vertex() again. A fighter's
+// vertex() (skinning, curved patches) runs once a frame instead of once per shadow cascade and the
+// scene. Only for shaders whose vertex() writes nothing else (capturable()).
+enum class Pass { COLOR, DEPTH, CAPTURE, COLOR_FED, DEPTH_FED };
+constexpr int A_FED_VERTEX = 14, A_FED_NORMAL = 15;
+// Whether `s`'s vertex() can be captured: it has one, writes no varyings and no POSITION.
+bool capturable(const GdShader& s);
 
 // Lights a draw can take (forward rendering).
 constexpr int MAX_DIRECTIONAL = 4;

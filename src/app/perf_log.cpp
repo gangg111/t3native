@@ -102,7 +102,7 @@ std::string PerfLog::take(double now, int state, const std::string& scene) {
             const std::vector<double>& v = shadow_parts[i];
             m[i] = v.empty() ? 0.0 : std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
         }
-        std::snprintf(item, sizeof item, " shadow clear/c0/c1/c2/c3=%.2f/%.2f/%.2f/%.2f/%.2fms", m[0], m[1], m[2], m[3], m[4]);
+        std::snprintf(item, sizeof item, " shadow capture+clear/c0/c1/c2/c3=%.2f/%.2f/%.2f/%.2f/%.2fms", m[0], m[1], m[2], m[3], m[4]);
         out += item;
     }
     if (!scene.empty()) out += " " + scene;

@@ -117,6 +117,10 @@ inline unsigned& gl_generation() { return gfx::gl_generation(); }
 struct SurfaceGpu {
     unsigned vao = 0, vbo = 0, ibo = 0;
     int count = 0;
+    // The interleaved buffer's attributes (location, components, offset in floats) and stride (in
+    // floats): a captured draw's own VAO reads them too (renderer.cpp).
+    std::vector<std::array<int, 3>> attributes;
+    int stride = 0;
     unsigned generation = gfx3d::gl_generation();
     ~SurfaceGpu();
 };

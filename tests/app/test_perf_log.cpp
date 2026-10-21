@@ -89,6 +89,6 @@ T3_TEST(perf_log, shadow_parts) {
     log.shadow_parts[4] = {0.5};
     std::string line = log.take(5.0, 8);
     // source: by hand: clear 0.20, c0 (3 + 4) / 2 = 3.50, c1 and c2 none = 0.00, c3 0.50
-    const std::string tail = " shadow clear/c0/c1/c2/c3=0.20/3.50/0.00/0.00/0.50ms";
+    const std::string tail = " shadow capture+clear/c0/c1/c2/c3=0.20/3.50/0.00/0.00/0.50ms";
     t.expect(line.size() > tail.size() && line.compare(line.size() - tail.size(), tail.size(), tail) == 0, "the shadow's parts: " + line);
 }

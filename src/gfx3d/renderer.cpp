@@ -106,8 +106,10 @@ void upload(Mesh::Surface& s) {
     for (const Part& p : parts) {
         glEnableVertexAttribArray(p.attr);
         glVertexAttribPointer(p.attr, p.comps, GL_FLOAT, GL_FALSE, stride * 4, reinterpret_cast<void*>(static_cast<intptr_t>(offset * 4)));
+        gpu->attributes.push_back({p.attr, p.comps, offset});
         offset += p.comps;
     }
+    gpu->stride = stride;
     if (!a.index.empty()) {
         glGenBuffers(1, &gpu->ibo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpu->ibo);
@@ -125,6 +127,10 @@ void upload(Mesh::Surface& s) {
 struct Look {
     const Program* color = nullptr;
     const Program* depth = nullptr;
+    // Native: a material whose vertex() can be captured (shader_program.h Pass::CAPTURE).
+    const Program* capture = nullptr;
+    const Program* color_fed = nullptr;
+    const Program* depth_fed = nullptr;
     std::map<std::string, ShaderValue> params;
     const std::map<std::string, ShaderValue>* shared_params = nullptr;
     bool transparent = false;
@@ -149,6 +155,23 @@ struct Renderer3D::Impl {
     std::map<int, unsigned> samplers;
     float anisotropy = 0;
     bool float_buffer = false;
+    // Native: the captured vertices of each instance's surface (render's "captured vertices").
+    struct Fed {
+        unsigned vao = 0, vbo = 0, generation = 0;
+        int count = 0;
+        const SurfaceGpu* source = nullptr;   // the upload its VAO reads the other attributes from
+        uint64_t frame = 0;                   // last drawn
+    };
+    std::map<std::pair<const void*, const void*>, Fed> fed;
+    uint64_t frame = 0;
+
+    void drop(Fed& f) {
+        if (f.generation == gl_generation()) {
+            if (f.vao) glDeleteVertexArrays(1, &f.vao);
+            if (f.vbo) glDeleteBuffers(1, &f.vbo);
+        }
+        f = Fed{};
+    }
 
     ~Impl() { release(); }
 
@@ -171,6 +194,7 @@ struct Renderer3D::Impl {
         release_glow();
         if (final_vao) glDeleteVertexArrays(1, &final_vao);
         for (auto& [k, s] : samplers) glDeleteSamplers(1, &s);
+        for (auto& [k, f] : fed) drop(f);
         forget();
     }
 
@@ -180,6 +204,7 @@ struct Renderer3D::Impl {
         glow_first = glow_down = glow_blur = 0;
         for (int k = 0; k < GLOW_LEVELS; ++k) glow_tex[k] = glow_fbo[k] = glow_tmp[k] = glow_tmp_fbo[k] = 0, glow_w[k] = glow_h[k] = 0;
         samplers.clear();
+        fed.clear();
         width = height = shadow_size = 0;
         white.reset();
     }
@@ -490,6 +515,7 @@ struct Item {
     Transform3D model;
     Look look;
     float depth;   // view-space distance of the bounds' centre (transparent sorting)
+    unsigned fed_vao = 0;   // native: this frame's captured vertices (0: vertex() runs in each draw)
 };
 
 bool modes_transparent(const GdShader& s) {
@@ -503,6 +529,11 @@ Look look_of(const Material* m) {
         if (!sm->shader) return look;
         look.color = program(sm->shader->path, sm->shader->defines, Pass::COLOR);
         look.depth = program(sm->shader->path, sm->shader->defines, Pass::DEPTH);
+        if (look.color && capturable(look.color->shader)) {
+            look.capture = program(sm->shader->path, sm->shader->defines, Pass::CAPTURE);
+            look.color_fed = program(sm->shader->path, sm->shader->defines, Pass::COLOR_FED);
+            look.depth_fed = program(sm->shader->path, sm->shader->defines, Pass::DEPTH_FED);
+        }
         look.shared_params = &sm->parameters;
     } else {
         static const StandardMaterial3D fallback;
@@ -875,7 +906,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         // The geometry.
         Mesh::Surface& surface = *it.surface;
         if (!surface.gpu || surface.gpu->generation != gl_generation()) upload(surface);
-        glBindVertexArray(surface.gpu->vao);
+        glBindVertexArray(it.fed_vao ? it.fed_vao : surface.gpu->vao);
         glVertexAttrib4f(A_NORMAL, 0, 0, 1, 0);
         glVertexAttrib4f(A_COLOR, 1, 1, 1, 1);
         glVertexAttrib4f(A_UV, 0, 0, 0, 0);
@@ -930,8 +961,85 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         }
     };
 
+    // ---- native: the captured vertices ----
+    // A material's vertex() whose results can be kept (Look::capture: a fighter's skinning and
+    // curved patches) runs once a frame per instance, into its own buffer (two fighters may share a
+    // mesh); the shadow's cascades and the scene then draw those vertices.
+    ++g.frame;
+    // The capture is the shadow's work moved ahead: it is timed with the shadow pass.
+    bool shadow_marked = false;
+    for (Item& it : items) {
+        if (!it.look.capture || !it.look.color_fed || !it.look.depth_fed || it.multimesh) continue;
+        if (!shadow_marked && on_pass) on_pass(PASS_SHADOW);
+        shadow_marked = true;
+        Mesh::Surface& surface = *it.surface;
+        if (!surface.gpu || surface.gpu->generation != gl_generation()) upload(surface);
+        int n = static_cast<int>(surface.arrays.vertex.size());
+        if (n == 0) continue;
+        Impl::Fed& fed = g.fed[{it.instance, &surface}];
+        if (fed.generation != gl_generation() || fed.count != n || fed.source != surface.gpu.get()) {
+            g.drop(fed);
+            fed.generation = gl_generation();
+            fed.count = n;
+            fed.source = surface.gpu.get();
+            glGenBuffers(1, &fed.vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, fed.vbo);
+            glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n) * 6 * 4, nullptr, GL_STREAM_COPY);
+            glGenVertexArrays(1, &fed.vao);
+            glBindVertexArray(fed.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, surface.gpu->vbo);
+            for (const std::array<int, 3>& a : surface.gpu->attributes) {
+                glEnableVertexAttribArray(a[0]);
+                glVertexAttribPointer(a[0], a[1], GL_FLOAT, GL_FALSE, surface.gpu->stride * 4,
+                                      reinterpret_cast<void*>(static_cast<intptr_t>(a[2] * 4)));
+            }
+            glBindBuffer(GL_ARRAY_BUFFER, fed.vbo);
+            glEnableVertexAttribArray(A_FED_VERTEX);
+            glVertexAttribPointer(A_FED_VERTEX, 3, GL_FLOAT, GL_FALSE, 24, nullptr);
+            glEnableVertexAttribArray(A_FED_NORMAL);
+            glVertexAttribPointer(A_FED_NORMAL, 3, GL_FLOAT, GL_FALSE, 24, reinterpret_cast<void*>(static_cast<intptr_t>(12)));
+            if (surface.gpu->ibo) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, surface.gpu->ibo);
+            glBindVertexArray(0);
+        }
+        fed.frame = g.frame;
+        const Program& p = *it.look.capture;
+        glUseProgram(p.id);
+        Mat4 model = Mat4::from(it.model);
+        if (p.model >= 0) glUniformMatrix4fv(p.model, 1, GL_FALSE, model.m);
+        if (p.view >= 0) glUniformMatrix4fv(p.view, 1, GL_FALSE, view_m.m);
+        if (p.inv_view >= 0) glUniformMatrix4fv(p.inv_view, 1, GL_FALSE, inv_view_m.m);
+        if (p.projection >= 0) glUniformMatrix4fv(p.projection, 1, GL_FALSE, proj_m.m);
+        if (p.viewport_size >= 0) glUniform2f(p.viewport_size, static_cast<float>(iw), static_cast<float>(ih));
+        if (p.instanced >= 0) glUniform1i(p.instanced, 0);
+        bind_user(p, it.look);
+        glBindVertexArray(surface.gpu->vao);
+        glVertexAttrib4f(A_NORMAL, 0, 0, 1, 0);
+        glVertexAttrib4f(A_COLOR, 1, 1, 1, 1);
+        glVertexAttrib4f(A_UV, 0, 0, 0, 0);
+        glVertexAttrib4f(A_UV2, 0, 0, 0, 0);
+        for (int i = 0; i < 4; ++i) glVertexAttrib4f(A_CUSTOM0 + i, 0, 0, 0, 0);
+        glEnable(GL_RASTERIZER_DISCARD);
+        glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, fed.vbo);
+        glBeginTransformFeedback(GL_POINTS);
+        glDrawArrays(GL_POINTS, 0, n);
+        glEndTransformFeedback();
+        glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0);
+        glDisable(GL_RASTERIZER_DISCARD);
+        it.fed_vao = fed.vao;
+    }
+    // Buffers of instances no longer drawn go after a few frames.
+    for (auto f = g.fed.begin(); f != g.fed.end();) {
+        if (g.frame - f->second.frame > 3) {
+            g.drop(f->second);
+            f = g.fed.erase(f);
+        } else {
+            ++f;
+        }
+    }
+    glBindVertexArray(0);
+
     if (sun >= 0) {
-        if (on_pass) on_pass(PASS_SHADOW);
+        if (on_pass && !shadow_marked) on_pass(PASS_SHADOW);
         const DirectionalLight3D& l = *dirs[sun].node;
         g.ensure_shadow(settings_.shadow_size);
         fade = std::min(l.directional_shadow_max_distance, camera.far);
@@ -1038,7 +1146,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
                     continue;
                 if (!(l.light_cull_mask & it.instance->layers)) continue;
                 if (!(cascades_of[i] & (1u << k))) continue;
-                draw(it, *it.look.depth, lv, lw, lpm, quadrant, quadrant, false);
+                draw(it, it.fed_vao ? *it.look.depth_fed : *it.look.depth, lv, lw, lpm, quadrant, quadrant, false);
                 ++stats_.shadow_draws;
             }
             from = to;
@@ -1090,7 +1198,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
     }
     for (std::vector<Item*>* list : {&opaque, &blended}) {
         for (Item* it : *list) {
-            draw(*it, *it->look.color, view_m, inv_view_m, proj_m, iw, ih, true);
+            draw(*it, it->fed_vao ? *it->look.color_fed : *it->look.color, view_m, inv_view_m, proj_m, iw, ih, true);
             ++stats_.draws;
         }
     }
