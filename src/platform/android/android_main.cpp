@@ -535,6 +535,39 @@ void perf_line(const std::string& line) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// GameActivity.deviceName / netLock / wifiPanel (NETWORK MODE).
+std::string device_name() {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    jmethodID m = env ? activity_method(env, "deviceName", "()Ljava/lang/String;") : nullptr;
+    if (!m) return "ANDROID";
+    auto name = static_cast<jstring>(env->CallObjectMethod(g_android->activity->clazz, m));
+    if (env->ExceptionCheck()) env->ExceptionClear(), name = nullptr;
+    if (!name) return "ANDROID";
+    const char* chars = env->GetStringUTFChars(name, nullptr);
+    std::string got = chars ? chars : "";
+    if (chars) env->ReleaseStringUTFChars(name, chars);
+    env->DeleteLocalRef(name);
+    return got.empty() ? "ANDROID" : got;
+}
+
+void network_lock(bool on) {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    static jmethodID m = nullptr;
+    if (env && !m) m = activity_method(env, "netLock", "(Z)V");
+    if (!m) return;
+    env->CallVoidMethod(g_android->activity->clazz, m, static_cast<jboolean>(on));
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
+void open_wifi_panel() {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    static jmethodID m = nullptr;
+    if (env && !m) m = activity_method(env, "wifiPanel", "()V");
+    if (!m) return;
+    env->CallVoidMethod(g_android->activity->clazz, m);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
 // pollText: null while the dialog is open, "1" + the text after OK, "0" after Cancel.
 TextAnswer poll_text(std::string& text) {
     if (!g_text_asked) return TEXT_NONE;

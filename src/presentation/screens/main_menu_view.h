@@ -19,6 +19,14 @@ public:
     gfx::TextureRef title;
     gd::Ref<MainMenu> menu;
     gd::Int frame_count = 0;
+    // Native: NETWORK MODE's pages in the list's place (lines around the cursor's band, in their
+    // colours), and a line under the band (the page's name, the host's address, the session).
+    static constexpr gd::Int FOOTER_Y = 0x1C0;
+    std::vector<std::string> page;
+    std::vector<gd::Int> page_colours;
+    gd::Int page_cursor = 0;
+    std::string footer;
+    gd::Int footer_colour = 6;
 
     void setup(const gd::Ref<HudData>& hud_data, const gfx::TextureRef& title_picture);
     void show_state(const gd::Ref<MainMenu>& main_menu, gd::Int frames);

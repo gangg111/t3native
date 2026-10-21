@@ -9,7 +9,9 @@ import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.PowerManager;
+import android.net.wifi.WifiManager;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
@@ -212,5 +214,65 @@ public class GameActivity extends NativeActivity {
         String text = textAnswer;
         textAnswer = null;
         return text;
+    }
+
+    /**
+     * NETWORK MODE (called from the game thread): the name the other player sees (the one set in
+     * the phone's settings, else its model), upper case and plain ASCII for the game's font.
+     */
+    public String deviceName() {
+        String name = null;
+        try {
+            name = Settings.Global.getString(getContentResolver(), Settings.Global.DEVICE_NAME);
+        } catch (RuntimeException e) {
+            // Not readable on this phone: the model below.
+        }
+        if (name == null || name.trim().isEmpty()) name = Build.MODEL;
+        StringBuilder s = new StringBuilder();
+        for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
+            if (c >= 32 && c < 127) s.append(c);
+        }
+        String plain = s.toString().trim();
+        return plain.length() > 20 ? plain.substring(0, 20) : plain;
+    }
+
+    private WifiManager.MulticastLock multicastLock;
+
+    /** A host keeps the Wi-Fi letting broadcasts (the searches for games) in while it waits. */
+    public synchronized void netLock(boolean on) {
+        try {
+            if (on && multicastLock == null) {
+                WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                if (wifi == null) return;
+                multicastLock = wifi.createMulticastLock("t3native");
+                multicastLock.setReferenceCounted(false);
+                multicastLock.acquire();
+            } else if (!on && multicastLock != null) {
+                multicastLock.release();
+                multicastLock = null;
+            }
+        } catch (RuntimeException e) {
+            multicastLock = null;
+        }
+    }
+
+    /**
+     * No local network on entering NETWORK MODE: Android 10+ shows its Wi-Fi panel over the game
+     * (an app may not turn Wi-Fi on itself); older versions turn Wi-Fi on.
+     */
+    @SuppressWarnings("deprecation")
+    public void wifiPanel() {
+        runOnUiThread(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    startActivity(new Intent(Settings.Panel.ACTION_WIFI));
+                } else {
+                    WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                    if (wifi != null) wifi.setWifiEnabled(true);
+                }
+            } catch (RuntimeException e) {
+                // No panel on this phone: the player turns Wi-Fi on from the quick settings.
+            }
+        });
     }
 }

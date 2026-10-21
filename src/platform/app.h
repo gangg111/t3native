@@ -62,6 +62,13 @@ double now();
 enum TextAnswer { TEXT_NONE, TEXT_ENTERED, TEXT_CANCELLED };
 bool ask_text(const std::string& title, const std::string& initial);
 TextAnswer poll_text(std::string& text);
+// Native: NETWORK MODE. The device's name as the other player sees it ("GALAXY Z FOLD7"); whether
+// the Wi-Fi lets broadcasts in (Android drops them unless the app holds a multicast lock: a host
+// must hear the searches); the system's Wi-Fi panel over the game (Android 10+ lets no app turn
+// Wi-Fi on itself; older versions turn it on).
+std::string device_name();
+void network_lock(bool on);
+void open_wifi_panel();
 }  // namespace Platform
 
 }  // namespace t3

@@ -10,8 +10,10 @@
 // names (fight_view, hud, mode_hud, pause_view, practice_view, move_list_view, enbu_view,
 // backdrop, bars), and so are texture packs (the settings, their screen and button and the save
 // card are here: `Settings`, `settings_view`, `settings_button`, `card`).
+#include <deque>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "app/progress_card.h"
 #include "audio/mixer.h"
@@ -50,6 +52,8 @@
 #include "gfx/gpu_timer.h"
 #include "presentation/screens/settings_view.h"
 #include "presentation/screens/vs_view.h"
+#include "presentation/screens/net_banner.h"
+#include "net/net_session.h"
 
 namespace t3 {
 
@@ -217,7 +221,7 @@ private:
     void _load();
     void _physics_process();
     gd::PI32 _pads();
-    void _step(const gd::PI32& pads);
+    void _step(const gd::PI32& pads, const SessionLog::Step* followed = nullptr);
     void _overlays();
     void _show();
     void _render();
@@ -281,6 +285,50 @@ private:
     void _note_music(const SimEvents& events);
     void _take_loaded();
     void _notice(const std::string& text, gd::Int frames = NOTICE_FRAMES);
+    // ---- native: NETWORK MODE (net/net_session.h; game_net.cpp). The host's flow runs as always
+    // with player 2's pads from the guest and streams its log of each step; the guest's flow runs
+    // those records (its callbacks answer from them, as a save state's load does).
+    enum class NetPage { NONE, CHOICE, HOSTING, SEARCHING, CONNECTING, MESSAGE };
+    static constexpr uint8_t NET_DELAY = 2;          // steps a pad waits on both sides (the round trip's cover)
+    static constexpr uint32_t NET_CHECK_EVERY = 60;   // steps between the host's checksums
+    static constexpr double NET_STALL = 0.5;          // seconds of waiting before the banner says so
+    static constexpr double NET_NOTICE = 3.0;         // seconds a session's end stays written
+    net::NetSession _net;
+    NetPage _net_page = NetPage::NONE;
+    NetPage _net_back_page = NetPage::CHOICE;         // where the MESSAGE page goes back to
+    gd::Int _net_cursor = 0;
+    gd::Int _net_prev = 0;                            // the pages' pads the tick before (their presses)
+    std::string _net_message;
+    bool _net_asking = false;                         // ENTER ADDRESS's dialog is open
+    bool _net_playing = false;                        // a session's flow runs
+    bool _net_host = false;
+    uint32_t _net_step = 0;                           // the host: the next step; the guest: the records run
+    uint32_t _net_due = 0;                            // the host: the steps due since the session began
+    double _net_started = 0;
+    static constexpr uint32_t NET_CATCH_UP = 4;      // steps a tick may make up after a wait
+    std::deque<uint32_t> _net_local;                  // the host: its own pads through their delay
+    uint32_t _net_next_pad = 0;                       // the guest: the next step it sends its pad for
+    std::deque<std::vector<uint8_t>> _net_records;    // the guest: records come and not yet run
+    std::vector<SessionLog::Event> _net_inside;       // the guest: the running record's callback results
+    size_t _net_inside_at = 0;
+    size_t _net_events_sent = 0;                      // the host: the log's events already in records
+    double _net_waited = -1;                          // since when the session waits for the other side
+    std::string _net_notice;                          // a session's end, shown until _net_notice_until
+    double _net_notice_until = 0;
+    bool _net_movies = false;                         // the movies' availability of this copy (the local flow's)
+    bool _log_net = false;                            // the host's log began with a session (no save states from it)
+    NetBanner net_banner;
+    net::NetSession::Identity _net_identity();
+    void _net_frame(double now);                      // the packets, the pages, the session's start and end
+    void _net_pages(double now);
+    void _net_show_page();
+    void _net_begin();
+    void _net_end(net::NetSession::Reason why);
+    void _net_local_game();
+    bool _net_guest_live() const;
+    void _net_host_tick();
+    void _net_guest_tick();
+    const SessionLog::Event* _net_event(uint8_t kind);
     gd::Ref<FlowTrace> _replay;   // the flow trace a replay reads its pads from
     gd::Int seed = -1;
     gd::PI32 _slots{-1, -1};

@@ -25,6 +25,7 @@ struct HostOptions {
     int lose_context_at = -1;    // --lose-context-at N: before frame N the GL context is destroyed and made again (App::graphics_lost)
     std::string audio_out;       // --audio-out FILE.wav: with --screenshot, the mix of every frame (1/60 s) written
     bool replay_writes = false;  // --replay-writes: the replay's memory card reads and writes the save file
+    std::string net_name;        // --net-name NAME: the name NETWORK MODE shows for this copy (two on one computer)
     // `--scene stages` (the remake's app/stage_viewer.gd): the stage, the free camera about the
     // midpoint (game units: yaw, distance, height up, pitch), the backdrop's turn and the backdrops.
     int stage = 0, yaw = 0, turn = 0, distance = 5300, camera_height = 1112, pitch = 0;
@@ -52,6 +53,7 @@ struct HostOptions {
             else if (a == "--no-movies") o.no_movies = true;
             else if (a == "--lose-context-at") o.lose_context_at = std::atoi(next().c_str());
             else if (a == "--audio-out") o.audio_out = next();
+            else if (a == "--net-name") o.net_name = next();
             else if (a == "--replay-writes") o.replay_writes = true;
             else if (a == "--stage") o.stage = std::atoi(next().c_str());
             else if (a == "--yaw") o.yaw = std::atoi(next().c_str());

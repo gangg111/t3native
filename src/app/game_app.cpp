@@ -121,8 +121,10 @@ bool GameApp::start(const std::string& data_root, const std::string& user_dir) {
     // Own buttons' forward and back: player 1's fighter on the right turns them, as FighterInput
     // turns the pad (its side flag).
     touch.facing_left = [this] {
-        return flow != nullptr && flow->state == GameFlow::State::FIGHT && !flow->fight->fighters.is_empty() &&
-               gd::Int(flow->fight->fighters[0]->side_flag) != 0;
+        // Native: NETWORK MODE's guest plays player 2.
+        gd::Int me = _net_playing && !_net_host ? 1 : 0;
+        return flow != nullptr && flow->state == GameFlow::State::FIGHT && flow->fight->fighters.size() > me &&
+               gd::Int(flow->fight->fighters[me]->side_flag) != 0;
     };
     touch.on_press = [this] {
         if (Settings.flag("touch_haptics") && !touch.editing) Platform::vibrate(TOUCH_BUZZ_MS, TOUCH_BUZZ_STRENGTH);
@@ -151,7 +153,7 @@ void GameApp::_show_touch() {
 
 // Whether the settings may open: on the main menu's list (not while it opens or leaves).
 bool GameApp::_settings_allowed() const {
-    return flow != nullptr && flow->state == GameFlow::State::MENU && flow->sub == 1 && _replay == nullptr;
+    return flow != nullptr && flow->state == GameFlow::State::MENU && flow->sub == 1 && _replay == nullptr && !_net_playing;
 }
 
 // A tap waiting for the next step is dropped as the settings open or close: the step does not run
@@ -307,6 +309,12 @@ void GameApp::_load() {
     audio_director->use_tables(content->tables);
     // InputRouter.set_motors(player, ...): the player's device's motors.
     PadVibration::Pads_set_motors = [this](gd::Int player, bool small_on, gd::Int large) {
+        // Native: in a NETWORK MODE session only this side's player is here (the guest's is player
+        // 2, playing with this copy's first device).
+        if (_net_playing) {
+            if (player != (_net_host ? 0 : 1)) return;
+            player = 0;
+        }
         rumble.set_motors(Pads.devices[player], small_on, large);
     };
     auto data = FlowData::load_from(gd::path_join(root, "tables/flow.json"));
@@ -337,6 +345,7 @@ void GameApp::_load() {
     movie.finished.push_back([this] { _on_movie_finished(); });
     _flow_data = data;
     flow = _make_flow(seed, rule_set, _movies_present() && !options.skip_movies);
+    _net_movies = flow->movies_available;
     if (flow->movies_available) {
         movies = JsonFile::read(gd::path_join(root, "movies/movies.json"));
     }
@@ -401,6 +410,7 @@ void GameApp::_load() {
     move_list_view.setup(hud_data, ram, vram_system, root);
     mode_hud.setup_modes(hud_data, ram, vram_system, content->mode_ram("force"), screens_dir);
     pause_view.setup(&hud);
+    net_banner.setup(hud_data);
     _apply_texts();
 }
 
@@ -410,7 +420,18 @@ gd::Ref<GameFlow> GameApp::_make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>&
     gd::Ref<GameFlow> f = gd::make<GameFlow>(content, _flow_data, rules, flow_seed);
     f->performance_factory = [this](gd::Int number) { return _new_performance(number); };
     f->movies_available = movies_on;
+    // Native: NETWORK MODE's entry (not in a trace replay: the game's menu as recorded).
+    f->network_entry = !_replay;
     f->card_loader = [this] {
+        if (_net_playing && !_net_host) {
+            const SessionLog::Event* e = _net_event(SessionLog::CARD_READ);
+            gd::PBytes b;
+            if (e != nullptr) {
+                b.resize(static_cast<gd::Int>(e->bytes.size()));
+                SessionLog::put_bytes(b, e->bytes);
+            }
+            return b;
+        }
         if (_resim) {
             const SessionLog::Event* e = _replayed(SessionLog::CARD_READ);
             gd::PBytes b;
@@ -425,6 +446,11 @@ gd::Ref<GameFlow> GameApp::_make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>&
         return b;
     };
     f->options->save_writer = [this](const gd::PBytes& bytes) {
+        // Native: NETWORK MODE's guest writes no card: the host's result.
+        if (_net_playing && !_net_host) {
+            const SessionLog::Event* e = _net_event(SessionLog::SAVE_WRITE);
+            return e != nullptr ? gd::Int(e->value) : gd::Int(SaveStore::CARD_DONE);
+        }
         if (_resim) {
             const SessionLog::Event* e = _replayed(SessionLog::SAVE_WRITE);
             return e != nullptr ? gd::Int(e->value) : gd::Int(SaveStore::CARD_DONE);
@@ -750,6 +776,8 @@ void GameApp::resize(int width, int height, const SafeArea& safe) {
 void GameApp::frame(double now) {
     if (!flow) return;
     double cpu_start = Platform::now();   // the performance log's CPU time (`now` may be a fixed step)
+    // Native: NETWORK MODE's packets, pages and sessions (the network's clock, not the fixed step).
+    _net_frame(Platform::now());
     unsigned uploads = gfx::gl_uploads(), programs = gfx::gl_programs();
     // Native: the name of a touch button being typed (Platform::ask_text's dialog).
     if (touch.wizard && touch.wizard->asking) {
@@ -825,7 +853,9 @@ void GameApp::_physics_process() {
     Pads._physics_process();
     rumble.update();   // the end of InputRouter._physics_process
     // Android's Back backs out of the settings but does not open them from the main menu.
-    Pads.back_allowed = flow->state != GameFlow::State::MENU || settings_view.visible;
+    // Native: it backs out of NETWORK MODE's pages too, and takes a guest out of its session.
+    Pads.back_allowed = flow->state != GameFlow::State::MENU || settings_view.visible || flow->sub == MainMenu::SUB_NETWORK ||
+                        (_net_playing && !_net_host);
     // Native: not over the touch controls' layout edit (its Done and Reset are in the top row).
     // Native: the settings are OPTION MODE's SYSTEM OPTION; the gear and Select no longer open the
     // remake's settings screen (it opens only for the keyboard's keys).
@@ -842,6 +872,12 @@ void GameApp::_physics_process() {
     if (Pads.escape_pressed && flow->pause_menu_open()) flow->escape_pressed = true;
     double t = Platform::now();
     for (gd::Int i = 0; i < options.speed; ++i) {
+        // Native: NETWORK MODE's steps (each side's tick waits for the other's pad or record).
+        if (_net_playing) {
+            if (_net_host) _net_host_tick();
+            else _net_guest_tick();
+            continue;
+        }
         gd::PI32 pads = _pads();
         steps += 1;
         gd::Int both = gd::Int(pads[0]) | gd::Int(pads[1]);
@@ -1011,29 +1047,38 @@ void GameApp::_load_pad_script(const std::string& path) {
 }
 
 // One step of the game and everything that shows it.
-void GameApp::_step(const gd::PI32& step_pads) {
+void GameApp::_step(const gd::PI32& step_pads, const SessionLog::Step* followed) {
     gd::PI32 pads = step_pads;
-    // A trace replay keeps its pads.
-    if (!_replay) pads = SkipButtons::apply(pads, *flow, movie.playing);
-    if (_release_pads) {
-        _release_pads = (gd::Int(pads[0]) | gd::Int(pads[1])) != 0;
-        pads = gd::PI32{0, 0};
+    if (followed) {
+        // Native: NETWORK MODE's guest runs the host's step as it ran there (its pads final).
+        SessionLog::prepare(*flow, *followed);
+        flow->fight->state_items = false;
+    } else {
+        // A trace replay keeps its pads.
+        if (!_replay) pads = SkipButtons::apply(pads, *flow, movie.playing);
+        if (_release_pads) {
+            _release_pads = (gd::Int(pads[0]) | gd::Int(pads[1])) != 0;
+            pads = gd::PI32{0, 0};
+        }
+        if (_tap) {
+            gd::Int tap_pad = flow->tap_pad();
+            if (tap_pad >= 0) pads[tap_pad] |= PadState::START;
+            _tap = false;
+        }
+        _apply_focus_pause(pads);
     }
-    if (_tap) {
-        gd::Int tap_pad = flow->tap_pad();
-        if (tap_pad >= 0) pads[tap_pad] |= PadState::START;
-        _tap = false;
-    }
-    _apply_focus_pause(pads);
     bool waiting = flow->movie_blocking;
     gd::Int handled = waiting ? flow->sim->events->items.size() : 0;
     bool in_options = flow->state == GameFlow::State::OPTIONS;
-    // A trace replay keeps the recorded two controllers.
-    if (!_replay) flow->sim->pads->connected = _second_input() ? 3 : 1;
-    // Native: the step's inputs into the session's log (save states), the pause menu's state items.
-    if (_logging) {
-        flow->fight->state_items = true;
-        _log.steps.push_back(SessionLog::capture(*flow, pads));
+    if (!followed) {
+        // A trace replay keeps the recorded two controllers; a NETWORK MODE session has both.
+        if (!_replay) flow->sim->pads->connected = (_net_playing || _second_input()) ? 3 : 1;
+        // Native: the step's inputs into the session's log (save states, the guest's records), the
+        // pause menu's state items (none from a log a session began).
+        if (_logging) {
+            flow->fight->state_items = !_net_playing && !_log_net;
+            _log.steps.push_back(SessionLog::capture(*flow, pads));
+        }
     }
     _stepping = true;
     flow->step(pads);
@@ -1076,12 +1121,15 @@ void GameApp::_step(const gd::PI32& step_pads) {
         _sound_logged = true;
         Log::info("audio: first sound keyed on at step " + gd::str(steps));
     }
-    if (save && card->write(flow->progress->save_data()) != SaveStore::CARD_DONE) {
+    if (followed) {
+        // The guest writes no card: the host's write failed or not.
+        if ((followed->flags & SessionLog::SAVE_FAILED) != 0) flow->save_failed();
+    } else if (save && card->write(flow->progress->save_data()) != SaveStore::CARD_DONE) {
         flow->save_failed();
         if (_logging && !_log.steps.empty()) _log.steps.back().flags |= SessionLog::SAVE_FAILED;
     }
-    if (_logging && state_request == PauseMenu::PAGE_SAVE_STATE) _save_state();
-    if (_logging && state_request == PauseMenu::PAGE_LOAD_STATE) _start_load();
+    if (_logging && !_net_playing && state_request == PauseMenu::PAGE_SAVE_STATE) _save_state();
+    if (_logging && !_net_playing && state_request == PauseMenu::PAGE_LOAD_STATE) _start_load();
     if (flow->movie_started >= 0 && _replay) {
         // The harness's movies end on their first frame.
         while (flow->movie_blocking) {
@@ -1426,6 +1474,7 @@ void GameApp::_render() {
     // CanvasLayer 10.
     if (blackout) canvas->draw_rect(gfx::Rect2(gfx::Vec2(0, 0), window), gfx::Color::black());
     fade.draw(*canvas, window);
+    net_banner.draw(*canvas, window);
     // TODO: message, stats (game.gd's layer 10 order: blackout, fade, message, stats, touch, settings_button, settings_view).
     if (touch.visible) touch.draw(*canvas, window);
     if (settings_button.visible) settings_button.draw(*canvas, window);

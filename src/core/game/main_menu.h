@@ -24,6 +24,10 @@ public:
     static constexpr gd::Int MODE_FORCE = GameMode::FORCE;
     static constexpr gd::Int MODE_OPTIONS = 9;
     static constexpr gd::Int MODE_THEATER = 10;
+    // Native: NETWORK MODE's entry (GameFlow.network_entry), in colour 11, which no mode uses.
+    static constexpr gd::Int MODE_NETWORK = 11;
+    static constexpr gd::Int NETWORK_COLOUR = 11;
+    static constexpr gd::Int SUB_NETWORK = 4;
 
     class Entry {
     public:

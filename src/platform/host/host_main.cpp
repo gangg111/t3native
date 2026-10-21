@@ -311,6 +311,16 @@ TextAnswer poll_text(std::string& text) {
     text = g_options.text_answer;
     return TEXT_ENTERED;
 }
+// The computer's name (`--net-name` for two copies on one computer); Windows lets broadcasts in and
+// has no Wi-Fi panel to open.
+std::string device_name() {
+    if (!g_options.net_name.empty()) return g_options.net_name;
+    char name[MAX_COMPUTERNAME_LENGTH + 1] = {};
+    DWORD size = sizeof name;
+    return GetComputerNameA(name, &size) ? std::string(name) : std::string("PC");
+}
+void network_lock(bool on) { Log::debug(std::string("network lock ") + (on ? "on" : "off")); }
+void open_wifi_panel() { Log::info("open_wifi_panel"); }
 }  // namespace t3::Platform
 
 int main(int argc, char** argv) {

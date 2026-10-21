@@ -59,6 +59,10 @@ else()
   # The host's GLES3 declarations (pointers loaded at run time) come from the NDK's Khronos headers.
   target_include_directories(t3core PUBLIC third_party/khronos)
 endif()
+if(WIN32)
+  # The local network play's sockets (net/udp.cpp).
+  target_link_libraries(t3core PUBLIC ws2_32 iphlpapi)
+endif()
 
 file(GLOB_RECURSE T3_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 add_executable(t3tests ${T3_TEST_SOURCES})

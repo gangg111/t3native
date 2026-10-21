@@ -110,6 +110,18 @@ public:
     gd::Ref<OptionsScreen> options;
     gd::Ref<PracticeMode> practice;
     bool escape_pressed = false;                   // the remake's Escape on a pause menu, pending until the menu takes it (not a button of the game's pads)
+    // Native: NETWORK MODE. The main menu lists it (below VS MODE) when `network_entry`, as
+    // DISCONNECT in a session; choosing it parks the menu in its sub-state 4 (the app's network
+    // screens) until `network_back`, an input like the pads, opens the list again. In a session
+    // player 2's own characters (its save's unlocked and start costumes; −1: the progress's) widen
+    // the selects' grids, and each player picks only their own.
+    bool network_entry = false;
+    bool network_session = false;
+    bool network_back = false;
+    gd::Int guest_unlocked = -1;
+    gd::Int guest_costumes = -1;
+    gd::Int unlocked_of(gd::Int pad) const;
+    gd::Int costumes_of(gd::Int pad) const;
     gd::Ref<VsScreen> vs_screen;
     gd::Ref<MatchFlow> match_flow;
 

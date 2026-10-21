@@ -146,7 +146,10 @@ public:
     void _move(gd::Int player, gd::Int pad);
     // FUN_8010E0D8: a face button (or the time running out) picks the costume; false once chosen.
     // □ and ✕ costume 0, ○ and △ costume 1, Start or L1 the Start costume when it is unlocked.
-    bool _choose(gd::Int player, gd::Int pressed);
+    // `pad`: whose pad chooses (the other side's in CHOOSING_OTHER), whose characters and costumes count.
+    bool _choose(gd::Int player, gd::Int pressed, gd::Int pad);
+    // Native: whether character `key` is pad `pad`'s to pick (outside a NETWORK MODE session: always).
+    bool _owns(gd::Int pad, gd::Int key) const;
     // FUN_8010E948: the chosen characters into the fight variables and the select memory.
     void commit();
     // FUN_8010EA2C: every other frame one side's big portrait follows its cursor (the side's

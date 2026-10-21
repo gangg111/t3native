@@ -428,6 +428,16 @@ void GameFlow::_update_escape() {
     escape_pressed = !_escape();
 }
 
+// Native: the characters (and Start costumes) pad `pad` may pick: player 2's own in a NETWORK MODE
+// session, else the progress's.
+gd::Int GameFlow::unlocked_of(gd::Int pad) const {
+    return pad == 1 && guest_unlocked >= 0 ? guest_unlocked : gd::Int(progress->unlocked);
+}
+
+gd::Int GameFlow::costumes_of(gd::Int pad) const {
+    return pad == 1 && guest_costumes >= 0 ? guest_costumes : gd::Int(progress->start_costumes);
+}
+
 // A pause menu is open and takes the remake's Escape (the move lists take it as Start).
 bool GameFlow::pause_menu_open() {
     if (state != State::FIGHT) {

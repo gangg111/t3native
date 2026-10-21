@@ -361,7 +361,7 @@ void QuickSelect::_setup(gd::Int player) {
     for (gd::Int k = 0; k < 0x34; ++k) {
         ctx->put8(rec(player) + R_PREFS + k, g->data->quick_prefs[0x34 * player + k]);
     }
-    w32(player, R_AVAILABLE, g->progress->unlocked);
+    w32(player, R_AVAILABLE, g->unlocked_of(player));   // native: player 2's own in a NETWORK MODE session
     gd::Int m = mode();
     gd::Int kind = _kind(player);
     switch (m) {
@@ -475,10 +475,10 @@ gd::Int QuickSelect::pick(gd::Int player, gd::Int pressed) {
     gd::Int key = cell_key(r32(player, R_COLUMN), r32(player, R_ROW));
     gd::Int c = key >> 2;
     if ((gd::shr(r32(player, R_AVAILABLE), c & 31) & 1) == 0) {
-        key = (gd::shr(g->progress->unlocked, c & 31) & 1) != 0 ? TAKEN : LOCKED;
+        key = (gd::shr(g->unlocked_of(player), c & 31) & 1) != 0 ? TAKEN : LOCKED;
         c = key >> 2;
     }
-    gd::Int extra = (gd::shr(g->progress->start_costumes, c & 31) & 1) != 0 ? START_COSTUME_BUTTONS : 0;
+    gd::Int extra = (gd::shr(g->costumes_of(player), c & 31) & 1) != 0 ? START_COSTUME_BUTTONS : 0;
     if (((extra | 0xF0) & pressed) == 0) {
         return 1;
     }

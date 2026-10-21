@@ -105,6 +105,8 @@ void MainMenu::_step() {
             gd::Int mode = entries[g->progress->menu_cursor]->entry->mode;
             if (mode == MODE_OPTIONS) {
                 g->goto_transition(GameFlow::State::OPTIONS);
+            } else if (mode == MODE_NETWORK) {
+                g->sub = SUB_NETWORK;
             } else if (mode == MODE_THEATER) {
                 if (g->progress->theater_new < 3) {
                     g->progress->theater_new += 1;
@@ -121,6 +123,13 @@ void MainMenu::_step() {
         }
         case 3:
             g->goto_transition(GameFlow::State::TITLE);
+            break;
+        case SUB_NETWORK:
+            // Native: the app's network screens until they leave (the list opens again on the entry).
+            if (g->network_back) {
+                g->network_back = false;
+                g->sub = 0;
+            }
             break;
     }
 }
@@ -146,6 +155,15 @@ void MainMenu::_open() {
             gd::Ref<Entry> shown = gd::make<Entry>();
             shown->entry = e;
             shown->new_ = v < 3;
+            entries.append(shown);
+        }
+        if (e->mode == GameMode::VS && g->network_entry) {
+            gd::Ref<FlowData::MenuEntry> net = gd::make<FlowData::MenuEntry>();
+            net->text = g->network_session ? "DISCONNECT" : "NETWORK MODE";
+            net->mode = MODE_NETWORK;
+            net->index = NETWORK_COLOUR;
+            gd::Ref<Entry> shown = gd::make<Entry>();
+            shown->entry = net;
             entries.append(shown);
         }
     }

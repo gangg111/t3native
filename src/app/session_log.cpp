@@ -20,6 +20,7 @@ SessionLog::Step SessionLog::capture(const GameFlow& flow, const gd::PI32& pads)
     s.pad1 = static_cast<uint32_t>(gd::Int(pads[1]));
     if (flow.escape_pressed) s.flags |= ESCAPE;
     if (flow.sim->pads->connected != 3) s.flags |= ONE_PAD;
+    if (flow.network_back) s.flags |= NETWORK_BACK;
     s.movie_result = static_cast<int8_t>(flow.movie_result);
     return s;
 }
@@ -28,6 +29,7 @@ void SessionLog::prepare(GameFlow& flow, const Step& step) {
     flow.escape_pressed = (step.flags & ESCAPE) != 0;
     flow.sim->pads->connected = (step.flags & ONE_PAD) != 0 ? 1 : 3;
     flow.movie_result = step.movie_result;
+    flow.network_back = (step.flags & NETWORK_BACK) != 0;
     flow.fight->state_items = true;
 }
 
@@ -128,6 +130,71 @@ struct Reader {
 };
 
 }  // namespace
+
+namespace {
+
+void put_events(std::vector<uint8_t>& out, const std::vector<const SessionLog::Event*>& events) {
+    put32(out, static_cast<uint32_t>(events.size()));
+    for (const SessionLog::Event* e : events) {
+        out.push_back(e->kind);
+        put32(out, static_cast<uint32_t>(e->value));
+        put_blob(out, e->bytes);
+    }
+}
+
+std::vector<SessionLog::Event> read_events(Reader& r, uint32_t step, bool inside) {
+    uint32_t n = r.u32();
+    std::vector<SessionLog::Event> events;
+    for (uint32_t i = 0; i < n && r.ok; ++i) {
+        SessionLog::Event e;
+        e.step = step;
+        e.inside = inside;
+        e.kind = r.u8();
+        e.value = static_cast<int32_t>(r.u32());
+        e.bytes = r.blob();
+        events.push_back(std::move(e));
+    }
+    return events;
+}
+
+}  // namespace
+
+std::vector<uint8_t> SessionLog::record_bytes(uint32_t step, size_t& event_at, bool with_check, uint64_t check) const {
+    std::vector<const Event*> before, inside;
+    while (event_at < events.size() && events[event_at].step <= step) {
+        const Event& e = events[event_at++];
+        if (e.step == step) (e.inside ? inside : before).push_back(&e);
+    }
+    std::vector<uint8_t> out;
+    put32(out, step);
+    put_events(out, before);
+    const Step& s = steps[step];
+    put32(out, s.pad0);
+    put32(out, s.pad1);
+    out.push_back(s.flags);
+    out.push_back(static_cast<uint8_t>(s.movie_result));
+    put_events(out, inside);
+    out.push_back(with_check ? 1 : 0);
+    put64(out, with_check ? check : 0);
+    return out;
+}
+
+bool SessionLog::parse_record(const std::vector<uint8_t>& data, Record& out) {
+    Reader r{data};
+    uint32_t step = r.u32();
+    Record rec;
+    rec.before = read_events(r, step, false);
+    rec.step.pad0 = r.u32();
+    rec.step.pad1 = r.u32();
+    rec.step.flags = r.u8();
+    rec.step.movie_result = static_cast<int8_t>(r.u8());
+    rec.inside = read_events(r, step, true);
+    rec.has_check = r.u8() != 0;
+    rec.check = r.u64();
+    if (!r.ok || r.at != data.size()) return false;
+    out = std::move(rec);
+    return true;
+}
 
 std::vector<uint8_t> SessionLog::serialize() const {
     std::vector<uint8_t> out;

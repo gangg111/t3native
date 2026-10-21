@@ -195,7 +195,8 @@ void CharacterSelect::_sparks() {
 // ---- the grid (FUN_8010DC04, FUN_8010DA30, FUN_8010D810)
 
 void CharacterSelect::grid_build() {
-    gd::Int mask = g->progress->unlocked & 0x1FFFFF;
+    // Native: in a NETWORK MODE session player 2's characters too (each picks only their own: _choose).
+    gd::Int mask = (g->unlocked_of(0) | g->unlocked_of(1)) & 0x1FFFFF;
     ctx->put32(0x10, 0);
     gd::Int shown = 0;
     for (gd::Int i = 0; i < CELL_COUNT; ++i) {
@@ -372,7 +373,7 @@ bool CharacterSelect::player_step(gd::Int player) {
         }
         case CHOOSING:
             _move(player, player);
-            if (!_choose(player, g->pressed(player))) {
+            if (!_choose(player, g->pressed(player), player)) {
                 w32(player, R_TIMER, CHOSEN_WAIT);
                 w32(player, R_CHOSEN_ANIM, CHOSEN_ANIM);
                 w32(player, R_STATE, CHOSEN);
@@ -394,7 +395,7 @@ bool CharacterSelect::player_step(gd::Int player) {
                 w32(player, R_KEY, NO_CELL);
                 w32(player, R_COSTUME, 0);
                 g->sound(SOUND_CHOOSE);
-            } else if (!_choose(player, g->pressed(other))) {
+            } else if (!_choose(player, g->pressed(other), other)) {
                 w32(player, R_TIMER, CHOSEN_WAIT);
                 w32(player, R_CHOSEN_ANIM, CHOSEN_ANIM);
                 w32(player, R_STATE, CHOSEN_BY_OTHER);
@@ -501,9 +502,19 @@ void CharacterSelect::_move(gd::Int player, gd::Int pad) {
     w32(player, R_KEY, cell_key(r32(player, R_CELL)));
 }
 
-bool CharacterSelect::_choose(gd::Int player, gd::Int pressed) {
-    gd::Int extra = (gd::shr(g->progress->start_costumes, r32(player, R_KEY) & 31) & 1) != 0 ? START_COSTUME_BUTTONS : 0;
+bool CharacterSelect::_owns(gd::Int pad, gd::Int key) const {
+    if (!g->network_session || key < 0 || key >= NO_CELL) return true;
+    return (gd::shr(g->unlocked_of(pad), key & 31) & 1) != 0;
+}
+
+bool CharacterSelect::_choose(gd::Int player, gd::Int pressed, gd::Int pad) {
+    gd::Int extra = (gd::shr(g->costumes_of(pad), r32(player, R_KEY) & 31) & 1) != 0 ? START_COSTUME_BUTTONS : 0;
     if (((extra | GameFlow::FACE_BUTTONS) & pressed) == 0 && ctx->u32(0x14) != 0) {
+        return true;
+    }
+    // Native: a character of the other NETWORK MODE player only is not this pad's to pick (the
+    // grid shows both players' characters).
+    if (!_owns(pad, rs32(player, R_KEY)) && ctx->u32(0x14) != 0) {
         return true;
     }
     gd::Int costume = (extra & pressed) != 0 ? 2 : ((pressed & (PadState::CIRCLE | PadState::CROSS)) != 0 ? 1 : 0);

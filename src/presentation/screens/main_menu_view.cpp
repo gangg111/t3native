@@ -23,10 +23,23 @@ void MainMenuView::_draw() {
     black();
     image(title, 0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y));
     if (menu && menu->scroll == 0) _bars(menu->glow);
+    if (!footer.empty()) centred(footer, 1, footer_colour, static_cast<float>(CENTRE), static_cast<float>(FOOTER_Y));
 }
 
 // The seven entries around the cursor.
 void MainMenuView::_list() {
+    if (!page.empty()) {
+        gd::Int y = LIST_Y;
+        for (gd::Int i = 0; i < 7; ++i) {
+            gd::Int k = page_cursor - 3 + i;
+            if (k >= 0 && k < static_cast<gd::Int>(page.size()) && !page[static_cast<size_t>(k)].empty()) {
+                gd::Int colour = static_cast<size_t>(k) < page_colours.size() ? page_colours[static_cast<size_t>(k)] : 6;
+                centred(page[static_cast<size_t>(k)], 1, colour, static_cast<float>(CENTRE), static_cast<float>(y));
+            }
+            y += LINE;
+        }
+        return;
+    }
     if (!menu || menu->entries.is_empty()) return;
     gd::Int count = menu->entries.size();
     gd::Int cur = menu->cursor();

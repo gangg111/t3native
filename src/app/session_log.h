@@ -26,7 +26,7 @@ public:
     static constexpr uint32_t VERSION = 1;
 
     // What a step had before it ran (flags), and after (SAVE_FAILED).
-    enum Flag : uint8_t { ESCAPE = 1, ONE_PAD = 2, SAVE_FAILED = 4 };
+    enum Flag : uint8_t { ESCAPE = 1, ONE_PAD = 2, SAVE_FAILED = 4, NETWORK_BACK = 8 };
     struct Step {
         uint32_t pad0 = 0, pad1 = 0;
         uint8_t flags = 0;
@@ -64,6 +64,18 @@ public:
     // A copy of the bytes of a block's packed array, and back in place (same size).
     static std::vector<uint8_t> bytes_of(const gd::PBytes& bytes);
     static void put_bytes(const gd::PBytes& into, const std::vector<uint8_t>& bytes);
+
+    // Native: NETWORK MODE. One step of the log as the host sends it to the guest: the app's changes
+    // before it, its entry, its callbacks' results and, when given, the checksum after it.
+    struct Record {
+        std::vector<Event> before, inside;
+        Step step;
+        bool has_check = false;
+        uint64_t check = 0;
+    };
+    // Step `step`'s record; `event_at` (the first event not yet in a record) moves past its events.
+    std::vector<uint8_t> record_bytes(uint32_t step, size_t& event_at, bool with_check, uint64_t check) const;
+    static bool parse_record(const std::vector<uint8_t>& data, Record& out);
 
     std::vector<uint8_t> serialize() const;
     // False (and the log unchanged) when the bytes are not a save state of this version.
