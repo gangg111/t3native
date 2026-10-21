@@ -420,7 +420,9 @@ struct Renderer3D::Impl {
         shadow_size = size;
         glGenTextures(1, &shadow_tex);
         glBindTexture(GL_TEXTURE_2D, shadow_tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+        // 16 bits, as the remake's RenderQuality asks Godot (directional_shadow_atlas_set_size(size,
+        // true)): half the memory a frame's shadow writes (a phone spent most of its GPU time there).
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, size, size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
