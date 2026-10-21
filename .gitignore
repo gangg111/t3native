@@ -8,3 +8,4 @@
 # The launcher icon is the game's logo (Namco's picture): it stays on the disk only.
 /android/res/mipmap-*/
 __pycache__/
+/art/private/

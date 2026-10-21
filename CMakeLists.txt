@@ -37,8 +37,12 @@ add_custom_command(
   DEPENDS ${T3_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
   COMMENT "Embedding the UI font")
 list(APPEND T3_CORE_SOURCES ${T3_FONT_CPP})
-# The native KEY CONFIGURATION's pad picture (art/draw_dualsense.py) built into the program.
-set(T3_PAD ${CMAKE_CURRENT_SOURCE_DIR}/art/pad_dualsense.png)
+# The native KEY CONFIGURATION's pad picture built into the program: the private photo
+# (art/fit_pad_photo.py, never committed) when present, else the drawing (art/draw_dualsense.py).
+set(T3_PAD ${CMAKE_CURRENT_SOURCE_DIR}/art/private/pad_dualsense_photo.png)
+if(NOT EXISTS ${T3_PAD})
+  set(T3_PAD ${CMAKE_CURRENT_SOURCE_DIR}/art/pad_dualsense.png)
+endif()
 set(T3_PAD_CPP ${CMAKE_CURRENT_BINARY_DIR}/pad_dualsense.cpp)
 add_custom_command(
   OUTPUT ${T3_PAD_CPP}
