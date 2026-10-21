@@ -123,7 +123,8 @@
     X(PFNGLTRANSFORMFEEDBACKVARYINGSPROC, glTransformFeedbackVaryings)                                \
     X(PFNGLBEGINTRANSFORMFEEDBACKPROC, glBeginTransformFeedback)                                      \
     X(PFNGLENDTRANSFORMFEEDBACKPROC, glEndTransformFeedback)                                          \
-    X(PFNGLBINDBUFFERBASEPROC, glBindBufferBase)
+    X(PFNGLBINDBUFFERBASEPROC, glBindBufferBase)                                                      \
+    X(PFNGLINVALIDATEFRAMEBUFFERPROC, glInvalidateFramebuffer)
 
 #ifndef __ANDROID__
 #define T3_GL_DECLARE(type, name) extern type name;

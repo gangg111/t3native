@@ -12,6 +12,10 @@
 #include "gfx3d/shader_program.h"
 #include "platform/log.h"
 
+#ifdef __ANDROID__
+#include <EGL/egl.h>
+#endif
+
 namespace t3::gfx3d {
 
 namespace {
@@ -144,6 +148,10 @@ struct Renderer3D::Impl {
     int width = 0, height = 0, samples = 0;
     unsigned msaa_fbo = 0, msaa_color = 0, msaa_depth = 0;
     unsigned resolve_fbo = 0, resolve_tex = 0;
+    // Native: GL_EXT_multisampled_render_to_texture (a tiled GPU's own resolve: the scene's samples
+    // and depth stay in the tile memory, the texture gets the resolved colour, no blit). msaa_fbo
+    // then renders straight into resolve_tex and there is no msaa_color nor resolve_fbo.
+    bool in_tile_resolve = false;
     unsigned shadow_fbo = 0, shadow_tex = 0;
     int shadow_size = 0;
     unsigned final_program = 0, final_vao = 0;
@@ -349,6 +357,9 @@ struct Renderer3D::Impl {
 
     void draw_screen(unsigned fbo, int w, int h, unsigned source_tex) {
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        // Every pixel is drawn again: a tiled GPU need not read the old ones in first.
+        const GLenum colour = GL_COLOR_ATTACHMENT0;
+        glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &colour);
         glViewport(0, 0, w, h);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, source_tex);
@@ -394,10 +405,12 @@ struct Renderer3D::Impl {
         if (resolve_fbo) glDeleteFramebuffers(1, &resolve_fbo), glDeleteTextures(1, &resolve_tex);
         width = w;
         height = h;
+        in_tile_resolve = false;
         int max_samples = 1;
         glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
         for (GLenum format : {GLenum(GL_RGBA16F), GLenum(GL_RGB10_A2), GLenum(GL_RGBA8)}) {
             samples = std::max(1, std::min(msaa, max_samples));
+            if (tile_buffers(format, w, h)) return;
             glGenFramebuffers(1, &msaa_fbo);
             glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
             glGenRenderbuffers(1, &msaa_color);
@@ -437,6 +450,59 @@ struct Renderer3D::Impl {
             msaa_fbo = msaa_color = msaa_depth = 0;
         }
         Log::error("gfx3d: no colour buffer format renders");
+    }
+
+    // The scene's buffer resolved in the tile memory (GL_EXT_multisampled_render_to_texture, Android):
+    // false (nothing made) where the driver has no such extension or does not take the format.
+    bool tile_buffers(GLenum format, int w, int h) {
+#ifdef __ANDROID__
+        using TextureMs = void (*)(GLenum, GLenum, GLenum, GLuint, GLint, GLsizei);
+        using StorageMs = void (*)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
+        static TextureMs texture_ms = nullptr;
+        static StorageMs storage_ms = nullptr;
+        static int state = 0;   // 0 not looked at, 1 there, -1 not
+        if (state == 0) {
+            const char* ext = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+            state = -1;
+            if (ext != nullptr && std::strstr(ext, "GL_EXT_multisampled_render_to_texture") != nullptr) {
+                texture_ms = reinterpret_cast<TextureMs>(eglGetProcAddress("glFramebufferTexture2DMultisampleEXT"));
+                storage_ms = reinterpret_cast<StorageMs>(eglGetProcAddress("glRenderbufferStorageMultisampleEXT"));
+                if (texture_ms && storage_ms) state = 1;
+            }
+        }
+        if (state < 0) return false;
+        int tile_samples = 1;
+        glGetIntegerv(0x8D57 /* GL_MAX_SAMPLES_EXT */, &tile_samples);
+        samples = std::max(1, std::min(samples, tile_samples));
+        glGetError();
+        glGenTextures(1, &resolve_tex);
+        glBindTexture(GL_TEXTURE_2D, resolve_tex);
+        GLenum type = format == GL_RGBA16F ? GL_HALF_FLOAT : (format == GL_RGB10_A2 ? GL_UNSIGNED_INT_2_10_10_10_REV : GL_UNSIGNED_BYTE);
+        glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(format), w, h, 0, GL_RGBA, type, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glGenFramebuffers(1, &msaa_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
+        texture_ms(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, resolve_tex, 0, samples);
+        glGenRenderbuffers(1, &msaa_depth);
+        glBindRenderbuffer(GL_RENDERBUFFER, msaa_depth);
+        storage_ms(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, w, h);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, msaa_depth);
+        if (glGetError() == GL_NO_ERROR && glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+            in_tile_resolve = true;
+            float_buffer = format == GL_RGBA16F;
+            Log::info(std::string("gfx3d: ") + (format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") +
+                      " x" + std::to_string(samples) + " resolved in the tiles, " + std::to_string(w) + "x" + std::to_string(h));
+            return true;
+        }
+        glDeleteFramebuffers(1, &msaa_fbo), glDeleteRenderbuffers(1, &msaa_depth), glDeleteTextures(1, &resolve_tex);
+        msaa_fbo = msaa_depth = resolve_tex = 0;
+#else
+        (void)format, (void)w, (void)h;
+#endif
+        return false;
     }
 
     void ensure_shadow(int size) {
@@ -1210,9 +1276,19 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
 
     // ---- resolve and encode ----
     if (on_pass) on_pass(PASS_POST);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, g.msaa_fbo);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g.resolve_fbo);
-    glBlitFramebuffer(0, 0, iw, ih, 0, 0, iw, ih, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    // Native: the scene's depth is not needed past its pass, nor its samples past the resolve: a
+    // tiled GPU then writes neither to memory.
+    const GLenum depth_only = GL_DEPTH_ATTACHMENT;
+    const GLenum colour_only = GL_COLOR_ATTACHMENT0;
+    glBindFramebuffer(GL_FRAMEBUFFER, g.msaa_fbo);
+    glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &depth_only);
+    if (!g.in_tile_resolve) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g.resolve_fbo);
+        glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, &colour_only);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, g.msaa_fbo);
+        glBlitFramebuffer(0, 0, iw, ih, 0, 0, iw, ih, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, &colour_only);
+    }
     // The glow needs values above 1: only from a float buffer.
     bool glow = env && env->glow_enabled && g.float_buffer;
     if (glow) g.make_glow(iw, ih);
