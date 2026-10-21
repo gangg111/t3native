@@ -1,4 +1,5 @@
 #include "gfx3d/shader_program.h"
+#include "gfx/texture.h"
 
 #include <regex>
 #include <sstream>
@@ -326,6 +327,7 @@ std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& na
     p->id = glCreateProgram();
     glAttachShader(p->id, vs);
     glAttachShader(p->id, fs);
+    gfx::gl_programs() += 1;
     glLinkProgram(p->id);
     glDeleteShader(vs);
     glDeleteShader(fs);

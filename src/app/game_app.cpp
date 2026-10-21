@@ -258,6 +258,7 @@ void GameApp::_on_setting_changed(const std::string& key) {
 // drawn; the VRAM images drop their sprites with TexturePacks' generation, the font, the gaze atlas
 // and the movie their pictures when they find them stale (gfx::Texture::stale).
 void GameApp::graphics_lost() {
+    _perf("graphics lost");
     // The 3D renderer forgets its GL objects (programs, buffers, the meshes' and multimeshes' uploads
     // by gl_generation) and is made again; the tile-map backdrop's render target too. The stages and
     // fighters take their pictures again as after a texture pack change (_on_setting_changed).
@@ -566,6 +567,7 @@ void GameApp::_start_load() {
 
 // Steps the loading flow for up to `budget` seconds of this frame; when done, takes it.
 void GameApp::_resimulate(double budget) {
+    _perf("state load");
     Resim& r = *_resim;
     double until = Platform::now() + budget;
     while (r.step < r.log.steps.size() && !r.failed && Platform::now() < until) {
@@ -682,6 +684,7 @@ bool GameApp::_movies_present() const {
 // A movie of the title (`title`) or of the ending and the Theater (`ending`, played inside a
 // frame: the flow waits for it).
 void GameApp::_start_movie(gd::Int which, bool blocking) {
+    _perf("movie");
     const gd::Json& list = movies.get(blocking ? "ending" : "title");
     gd::Int n = list.is_array() ? list.size() : 0;
     if (which < 0 || which >= n) {
@@ -743,6 +746,7 @@ void GameApp::resize(int width, int height, const SafeArea& safe) {
 void GameApp::frame(double now) {
     if (!flow) return;
     double cpu_start = Platform::now();   // the performance log's CPU time (`now` may be a fixed step)
+    unsigned uploads = gfx::gl_uploads(), programs = gfx::gl_programs();
     // Native: the name of a touch button being typed (Platform::ask_text's dialog).
     if (touch.wizard && touch.wizard->asking) {
         std::string text;
@@ -776,19 +780,35 @@ void GameApp::frame(double now) {
     bool measured = Settings.flag("perf_log") && !_replay;
     if (measured) gpu_timer.begin();
     _process();
+    double render_start = Platform::now();
     _render();
     if (!measured) {
         perf_log.reset();
+        _perf_note.clear();
         return;
     }
     gpu_timer.end();
-    // Native: the performance log: this frame's CPU time from the frame's start, the GPU times
-    // back so far, and a line every PerfLog::WINDOW seconds.
+    // Native: the performance log: this frame's update (steps, views) and render times, the GPU
+    // times back so far; a long frame's line at once, and a line every PerfLog::WINDOW seconds.
     double elapsed = now - _start_time;
-    perf_log.frame(elapsed, (Platform::now() - cpu_start) * 1000.0);
+    double end = Platform::now();
+    double update_ms = (render_start - cpu_start) * 1000.0, render_ms = (end - render_start) * 1000.0;
+    perf_log.frame(elapsed, update_ms, render_ms);
+    if (update_ms + render_ms > PerfLog::SPIKE_MS) {
+        if (gfx::gl_programs() != programs) _perf(std::to_string(gfx::gl_programs() - programs) + " shaders linked");
+        if (gfx::gl_uploads() != uploads) _perf(std::to_string(gfx::gl_uploads() - uploads) + " textures uploaded");
+        Platform::perf_line(PerfLog::spike(elapsed, update_ms, render_ms, static_cast<int>(flow->state), _perf_note));
+    }
+    _perf_note.clear();
     gpu_timer.collect(perf_log.gpu_ms);
     std::string line = perf_log.take(elapsed, static_cast<int>(flow->state));
     if (!line.empty()) Platform::perf_line(line);
+}
+
+// Native: what this frame did that may take long (the performance log's spike lines).
+void GameApp::_perf(const std::string& what) {
+    if (_perf_note.find(what) != std::string::npos) return;
+    _perf_note += _perf_note.empty() ? what : ", " + what;
 }
 
 void GameApp::_physics_process() {
@@ -1066,7 +1086,10 @@ void GameApp::_overlays() {
     for (gd::Int slot = 0; slot < 2; ++slot) {
         if (flow->slots[slot] != _slots[slot]) {
             _slots[slot] = flow->slots[slot];
-            if (OVERLAY_NAMES.has(_slots[slot])) ram->load_overlay(OVERLAY_NAMES.at(_slots[slot]));
+            if (OVERLAY_NAMES.has(_slots[slot])) {
+                _perf("overlay");
+                ram->load_overlay(OVERLAY_NAMES.at(_slots[slot]));
+            }
         }
     }
 }
@@ -1165,6 +1188,7 @@ void GameApp::_show() {
 
 // The ranking's stage (ranking.ovl FUN_800C390C picks it, FUN_800C3AAC turns the camera).
 void GameApp::_ranking_backdrop(bool shown) {
+    if (shown && !_backdrop_shown) _perf("ranking backdrop");
     if (!shown) {
         if (backdrop != nullptr) {
             backdrop->visible = false;
@@ -1186,6 +1210,7 @@ void GameApp::_ranking_backdrop(bool shown) {
 }
 
 void GameApp::_build_fight_view() {
+    _perf("fight view");
     if (fight_view != nullptr) {
         // fight_view.queue_free()
         fight_view = nullptr;
@@ -1225,6 +1250,7 @@ void GameApp::_build_fight_view() {
 
 // The records whose model changed since the fight view showed them.
 void GameApp::_replace_fighters() {
+    _perf("fighter swap");
     const gd::Ref<FightState>& fight = flow->fight;
     gd::Int n = _model_loads.size();
     for (gd::Int i = 0; i < n; ++i) {
@@ -1242,6 +1268,7 @@ void GameApp::_replace_fighters() {
 }
 
 gd::Ref<EnbuPerformance> GameApp::_new_performance(gd::Int number) {
+    _perf("demo load");
     gd::Ref<EnbuAssets> assets = _enbu_assets();
     enbu_view->load_demo(assets->demo(number), assets->models(number));
     return assets->performance(number);

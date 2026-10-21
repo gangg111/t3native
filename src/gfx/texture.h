@@ -12,6 +12,9 @@ namespace t3::gfx {
 // deleted (its name may belong to an object of the new context). Advanced when the context is lost
 // (Renderer3D::graphics_lost, gfx3d::gl_generation() is this counter).
 unsigned& gl_generation();
+// Native: the textures uploaded and the programs linked so far (the performance log's spike notes).
+unsigned& gl_uploads();
+unsigned& gl_programs();
 
 class Texture {
 public:

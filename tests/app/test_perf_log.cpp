@@ -21,7 +21,7 @@ T3_TEST(perf_log, one_line_per_window) {
     // 120 Hz for 5 s (601 frames, 600 intervals of 8.333 ms), one late frame of 25 ms in it.
     double at = 0.0;
     for (int i = 0; i <= 600; ++i) {
-        log.frame(at, i == 300 ? 4.0 : 1.0);
+        log.frame(at, i == 300 ? 4.0 : 1.0, 2.0);
         if (i == 590) t.expect_equal(log.take(at, 8), std::string(), "nothing before 5 s");
         if (i < 600) at += i == 299 ? 0.025 : 1.0 / 120.0;
     }
@@ -29,8 +29,16 @@ T3_TEST(perf_log, one_line_per_window) {
     std::string line = log.take(at, 8);
     // source: by hand: 600 intervals over 5.0167 s = 119.6 fps; median 8.33 ms; the one 25 ms
     // interval > 1.5 x 8.33 is the jank; cpu mean (600 + 4) / 601 = 1.005, 95th 1.00, longest 4;
-    // gpu mean 2, longest 3
-    t.expect_equal(line, std::string("t=5s state=8 fps=119.6 frame=8.33/25.0ms jank=1 cpu=1.00/1.00/4.00ms gpu=2.00/3.00ms"),
+    // render 2 every frame; gpu mean 2, longest 3
+    t.expect_equal(line, std::string("t=5s state=8 fps=119.6 frame=8.33/25.0ms jank=1 update=1.00/1.00/4.00ms render=2.00/2.00ms gpu=2.00/3.00ms"),
                    "the window's line");
     t.expect_equal(log.take(at + 1.0, 8), std::string(), "a new window begins");
+}
+
+T3_TEST(perf_log, spike_line) {
+    // source: by hand: 200.1 + 2.9 = 203.0
+    t.expect_equal(PerfLog::spike(12.34, 200.1, 2.9, 8, "fight view"),
+                   std::string("spike t=12.3s 203.0ms update=200.1 render=2.9 state=8 fight view"), "a long frame's line");
+    t.expect_equal(PerfLog::spike(1.0, 30.0, 0.0, 2, ""), std::string("spike t=1.0s 30.0ms update=30.0 render=0.0 state=2"),
+                   "without a note");
 }

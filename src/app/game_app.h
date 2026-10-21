@@ -263,6 +263,8 @@ private:
     bool _has_saved = false;
     std::unique_ptr<Resim> _resim;  // a load in progress
     gd::Int _notice_frames = 0;
+    std::string _perf_note;         // what this frame did that may take long (PerfLog::spike)
+    void _perf(const std::string& what);
     gd::Ref<GameFlow> _make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on);
     void _map_blocks();
     void _record(uint8_t kind, int32_t value, std::vector<uint8_t> bytes = {});

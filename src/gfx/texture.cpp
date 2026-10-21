@@ -12,6 +12,16 @@ unsigned& gl_generation() {
     return generation;
 }
 
+unsigned& gl_uploads() {
+    static unsigned n = 0;
+    return n;
+}
+
+unsigned& gl_programs() {
+    static unsigned n = 0;
+    return n;
+}
+
 namespace {
 unsigned g_stale_binds = 0;
 }  // namespace
@@ -30,6 +40,7 @@ Texture::Texture(int width, int height, std::vector<float> rgba) : width_(width)
 }
 
 void Texture::_upload(const Image& image) const {
+    gl_uploads() += 1;
     glGenTextures(1, &id_);
     generation_ = gl_generation();
     glBindTexture(GL_TEXTURE_2D, id_);

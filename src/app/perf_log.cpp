@@ -7,11 +7,19 @@
 
 namespace t3 {
 
-void PerfLog::frame(double now, double cpu_ms) {
+void PerfLog::frame(double now, double update_ms, double render_ms) {
     if (start_ < 0.0) start_ = now;
     if (last_ >= 0.0) intervals_ms_.push_back((now - last_) * 1000.0);
     last_ = now;
-    cpu_ms_.push_back(cpu_ms);
+    update_ms_.push_back(update_ms);
+    render_ms_.push_back(render_ms);
+}
+
+std::string PerfLog::spike(double now, double update_ms, double render_ms, int state, const std::string& note) {
+    char line[256];
+    std::snprintf(line, sizeof line, "spike t=%.1fs %.1fms update=%.1f render=%.1f state=%d%s%s", now, update_ms + render_ms,
+                  update_ms, render_ms, state, note.empty() ? "" : " ", note.c_str());
+    return line;
 }
 
 double PerfLog::median(std::vector<double> v) {
@@ -30,25 +38,30 @@ double PerfLog::percentile(std::vector<double> v, double share) {
 }
 
 std::string PerfLog::take(double now, int state) {
-    if (start_ < 0.0 || now - start_ < WINDOW || cpu_ms_.empty()) return "";
+    if (start_ < 0.0 || now - start_ < WINDOW || update_ms_.empty()) return "";
     double seconds = now - start_;
     double fps = static_cast<double>(intervals_ms_.size()) / std::max(seconds, 1e-9);
     double mid = median(intervals_ms_);
     double longest = intervals_ms_.empty() ? 0.0 : *std::max_element(intervals_ms_.begin(), intervals_ms_.end());
     long jank = std::count_if(intervals_ms_.begin(), intervals_ms_.end(), [&](double ms) { return ms > JANK * mid; });
-    double cpu_mean = std::accumulate(cpu_ms_.begin(), cpu_ms_.end(), 0.0) / static_cast<double>(cpu_ms_.size());
-    double cpu_max = *std::max_element(cpu_ms_.begin(), cpu_ms_.end());
+    double n = static_cast<double>(update_ms_.size());
+    double update_mean = std::accumulate(update_ms_.begin(), update_ms_.end(), 0.0) / n;
+    double update_max = *std::max_element(update_ms_.begin(), update_ms_.end());
+    double render_mean = std::accumulate(render_ms_.begin(), render_ms_.end(), 0.0) / n;
+    double render_max = *std::max_element(render_ms_.begin(), render_ms_.end());
     char gpu[48] = "gpu=-";
     if (!gpu_ms.empty()) {
         double gpu_mean = std::accumulate(gpu_ms.begin(), gpu_ms.end(), 0.0) / static_cast<double>(gpu_ms.size());
         std::snprintf(gpu, sizeof gpu, "gpu=%.2f/%.2fms", gpu_mean, *std::max_element(gpu_ms.begin(), gpu_ms.end()));
     }
     char line[256];
-    std::snprintf(line, sizeof line, "t=%.0fs state=%d fps=%.1f frame=%.2f/%.1fms jank=%ld cpu=%.2f/%.2f/%.2fms %s", now,
-                  state, fps, mid, longest, jank, cpu_mean, percentile(cpu_ms_, 0.95), cpu_max, gpu);
+    std::snprintf(line, sizeof line, "t=%.0fs state=%d fps=%.1f frame=%.2f/%.1fms jank=%ld update=%.2f/%.2f/%.2fms render=%.2f/%.2fms %s",
+                  now, state, fps, mid, longest, jank, update_mean, percentile(update_ms_, 0.95), update_max, render_mean,
+                  render_max, gpu);
     // A new window from this frame on.
     start_ = now;
-    cpu_ms_.clear();
+    update_ms_.clear();
+    render_ms_.clear();
     intervals_ms_.clear();
     gpu_ms.clear();
     return line;
@@ -57,7 +70,8 @@ std::string PerfLog::take(double now, int state) {
 void PerfLog::reset() {
     start_ = -1.0;
     last_ = -1.0;
-    cpu_ms_.clear();
+    update_ms_.clear();
+    render_ms_.clear();
     intervals_ms_.clear();
     gpu_ms.clear();
 }
