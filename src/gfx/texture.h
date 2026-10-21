@@ -2,6 +2,7 @@
 // A GL texture made from an RGBA8 image (Godot's ImageTexture / Texture2D for the views).
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gfx/image.h"
 
@@ -18,6 +19,9 @@ public:
     explicit Texture(const Image& image, bool mipmaps = false, bool keep = false);
     // An empty RGBA8 texture of w x h (a render target's colour, Godot's ViewportTexture).
     Texture(int width, int height);
+    // An RGBA32F texture of w x h from `rgba` (4 floats a texel; Image.FORMAT_RGBAF), read with
+    // texelFetch (not filterable). It keeps the floats and makes itself again after a context loss.
+    Texture(int width, int height, std::vector<float> rgba);
     ~Texture();
     Texture(const Texture&) = delete;
     Texture& operator=(const Texture&) = delete;
@@ -33,7 +37,7 @@ public:
     int height() const { return height_; }
     bool has_mipmaps() const { return mipmaps_; }
     // Made under an older GL context (and not able to make itself again).
-    bool stale() const { return generation_ != gl_generation() && path_.empty() && kept_.empty(); }
+    bool stale() const { return generation_ != gl_generation() && path_.empty() && kept_.empty() && floats_.empty(); }
     // The PNG it was read from (load_texture), else empty.
     const std::string& path() const { return path_; }
 
@@ -50,6 +54,7 @@ private:
     mutable bool mipmaps_ = false;
     std::string path_;
     Image kept_;
+    std::vector<float> floats_;   // an RGBA32F texture's texels
 };
 
 using TextureRef = std::shared_ptr<Texture>;

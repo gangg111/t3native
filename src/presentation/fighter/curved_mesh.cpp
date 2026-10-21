@@ -106,10 +106,8 @@ gfx::TextureRef CurvedMesh::_texture() {
     gd::Int height = gd::maxi(1, static_cast<gd::Int>(std::ceil(static_cast<double>(texels) / DATA_WIDTH)));
     gd::Packed<float> data = _data.duplicate();
     data.resize(DATA_WIDTH * height * 4);
-    // TODO: gfx3d: Image.create_from_data(DATA_WIDTH, height, false, Image.FORMAT_RGBAF,
-    // data.to_byte_array()) and ImageTexture.create_from_image: gfx::Image and gfx::Texture hold
-    // RGBA8 only, so there is no float texture to make; the "curved" shading has no corner data.
-    return nullptr;
+    // Image.create_from_data(DATA_WIDTH, height, false, Image.FORMAT_RGBAF, ...) as an RGBA32F texture.
+    return std::make_shared<gfx::Texture>(static_cast<int>(DATA_WIDTH), static_cast<int>(height), data.vec());
 }
 
 }  // namespace t3

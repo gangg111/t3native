@@ -23,12 +23,23 @@ Texture::Texture(const Image& image, bool mipmaps, bool keep) : width_(image.wid
     _upload(image);
 }
 
+Texture::Texture(int width, int height, std::vector<float> rgba) : width_(width), height_(height), floats_(std::move(rgba)) {
+    floats_.resize(static_cast<size_t>(width) * height * 4, 0.0f);
+    // Uploaded at the first bind (id()): it may be made where there is no GL (the views' tests).
+    generation_ = 0;
+}
+
 void Texture::_upload(const Image& image) const {
     glGenTextures(1, &id_);
     generation_ = gl_generation();
     glBindTexture(GL_TEXTURE_2D, id_);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width_, height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.rgba.data());
+    if (!floats_.empty()) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT, floats_.data());
+        mipmaps_ = false;
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width_, height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.rgba.data());
+    }
     if (mipmaps_) glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -51,7 +62,7 @@ Texture::Texture(int width, int height) : width_(width), height_(height) {
 bool Texture::_live() const {
     if (generation_ == gl_generation()) return true;
     id_ = 0;
-    if (!kept_.empty()) {
+    if (!kept_.empty() || !floats_.empty()) {
         _upload(kept_);
         return true;
     }
@@ -81,7 +92,7 @@ unsigned Texture::id() const {
 
 void Texture::ensure_mipmaps() {
     if (!_live()) return;
-    if (mipmaps_) return;
+    if (mipmaps_ || !floats_.empty()) return;   // a float texture is read with texelFetch only
     glBindTexture(GL_TEXTURE_2D, id_);
     glGenerateMipmap(GL_TEXTURE_2D);
     mipmaps_ = true;
