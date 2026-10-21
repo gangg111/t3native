@@ -29,6 +29,11 @@ public:
     // window), over its `width` x `height` pixels. Sets camera.viewport_size.
     void render(Node3D& root, Camera3D& camera, int width, int height, unsigned target_fbo = 0);
 
+    // Native: what a first render of `root` would make, made now (hidden nodes too): the materials'
+    // programs, the surfaces' buffers, the textures' late uploads and mipmaps, the sky's program.
+    // Draws nothing; a view built behind a loading screen shows its first frame without them.
+    void prepare(Node3D& root, const Camera3D& camera);
+
     // The GL context was lost: every GL object is forgotten and made again on the next render.
     static void graphics_lost();
 

@@ -620,6 +620,48 @@ std::vector<float> uniform_values(const Program::User& u, const ShaderValue* v) 
 
 }  // namespace
 
+void Renderer3D::prepare(Node3D& root, const Camera3D& camera) {
+    impl_->ensure_context();
+    // The material's textures as bind_user binds them (a late upload, the mipmaps it samples).
+    auto textures = [](const Program* p, const Look& look) {
+        if (!p) return;
+        for (const Program::User& u : p->user) {
+            if (u.uniform->as_texture || u.uniform->type != "sampler2D") continue;
+            const ShaderValue* val = param(look, u.uniform->name);
+            const auto* t = val ? std::get_if<gfx::TextureRef>(val) : nullptr;
+            if (!t || !*t) continue;
+            ShaderUniform::Filter f = u.uniform->filter;
+            if (f == ShaderUniform::Filter::DEFAULT || f == ShaderUniform::Filter::NEAREST_MIPMAP ||
+                f == ShaderUniform::Filter::LINEAR_MIPMAP || f == ShaderUniform::Filter::LINEAR_MIPMAP_ANISOTROPIC)
+                (*t)->ensure_mipmaps();
+            (*t)->id();
+        }
+    };
+    std::function<void(Node3D&)> walk = [&](Node3D& n) {
+        if (auto* g3 = dynamic_cast<GeometryInstance3D*>(&n)) {
+            Mesh* mesh = nullptr;
+            if (auto* mi = dynamic_cast<MeshInstance3D*>(g3)) mesh = mi->mesh.get();
+            else if (auto* mmi = dynamic_cast<MultiMeshInstance3D*>(g3)) mesh = mmi->multimesh ? mmi->multimesh->mesh.get() : nullptr;
+            if (mesh) {
+                for (Mesh::Surface& s : mesh->surfaces) {
+                    if (s.arrays.vertex.empty()) continue;
+                    Look look = look_of(g3->material_override ? g3->material_override.get() : s.material.get());
+                    if (!look.color) continue;
+                    textures(look.color, look);
+                    if (!s.gpu || s.gpu->generation != gl_generation()) upload(s);
+                }
+            }
+        }
+        for (const gd::Ref<Node3D>& c : n.get_children()) walk(*c);
+    };
+    walk(root);
+    const Environment* env = camera.environment.get();
+    if (env && env->background_mode == Environment::BG_SKY && env->sky_material) {
+        Look sky = look_of(env->sky_material.get());
+        textures(sky.color, sky);
+    }
+}
+
 void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, unsigned target_fbo) {
     stats_ = {};
     if (width <= 0 || height <= 0) return;

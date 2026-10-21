@@ -1264,6 +1264,12 @@ void GameApp::_build_fight_view() {
     fight_view->stage_view->_notification(StageView::NOTIFICATION_ENTER_TREE);
     hud.setup(hud_data, slots);
     practice_view.camera = fight_view->rig->camera;
+    // Native: the fighters' motion banks, which the fight's first step (_link_banks) would read, are
+    // read now behind the VS screen (FightContent keeps them; Mokujin's per-round bank stays late).
+    for (gd::Int p = 0; p < fight->count; ++p) {
+        if (fight->fighters[p]->bank_type >= 0) content->bank(fight->fighters[p]->bank_type);
+    }
+    _fight_view_prepared = false;
 }
 
 // The records whose model changed since the fight view showed them.
@@ -1384,6 +1390,14 @@ void GameApp::_render() {
     // (gfx::Canvas::begin does not clear; flush draws without depth test into the bound framebuffer).
     glClearColor(_clear_colour.r, _clear_colour.g, _clear_colour.b, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Native: a fight view built behind the VS screen gets its GPU objects there, not in its first
+    // shown frame.
+    if (fight_view != nullptr && !fight_view->visible && !_fight_view_prepared) {
+        _perf("fight view prepared");
+        _ensure_renderer();
+        renderer3d->prepare(*fight_view, *fight_view->rig->camera);
+        _fight_view_prepared = true;
+    }
     if (scene != nullptr && width_ > 0 && height_ > 0) {
         _ensure_renderer();
         renderer3d->render(*scene, *camera, width_, height_, 0);
