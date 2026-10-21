@@ -298,9 +298,10 @@ bool TouchControls::pointer(PointerEvent kind, const Pointer& p) {
 // has one finger, the first one down: another in its zone (a resting palm) is taken but does nothing.
 bool TouchControls::press(gd::Int index, gfx::Vec2 at) {
     if (_fingers.has(index)) release(index);   // a lost lift: the finger starts anew
-    gd::Ref<Control2> c = control_at(at);
+    gd::Ref<Control2> c, second;
+    if (!pair_at(at, c, second)) c = control_at(at);
     if (c != nullptr) {
-        _fingers.set(index, Finger{false, gfx::Vec2(), c});
+        _fingers.set(index, Finger{false, gfx::Vec2(), c, second});
         _landed(c);
     } else if (has_point(_stick_zone, at)) {
         if (!is_inf(_stick_origin)) return true;
@@ -319,11 +320,13 @@ void TouchControls::move(gd::Int index, gfx::Vec2 at) {
     if (f.stick) {
         _stick_at = at;
     } else if (is_zero(f.control->rect.size)) {
-        // A finger on the face buttons slides between them.
-        gd::Ref<Control2> c = control_at(at);
+        // A finger on the face buttons slides between them (and onto two at once, between two).
+        gd::Ref<Control2> c, second;
+        if (!pair_at(at, c, second)) c = control_at(at);
         if (c != nullptr && is_zero(c->rect.size)) {
-            bool other = c != f.control;
+            bool other = c != f.control || second != f.pair;
             f.control = c;
+            f.pair = second;
             if (other) _landed(c);
         }
     }
@@ -354,6 +357,52 @@ gd::Ref<TouchControls::Control2> TouchControls::control_at(gfx::Vec2 at) const {
     return best;
 }
 
+bool TouchControls::pair_at(gfx::Vec2 at, gd::Ref<Control2>& a, gd::Ref<Control2>& b) const {
+    std::vector<gd::Ref<Control2>> round;
+    for (const auto& c : _controls) {
+        if (is_zero(c->rect.size) && c->custom_id == 0) round.push_back(c);
+    }
+    // Each one's two nearest round buttons.
+    auto neighbours = [&](const gd::Ref<Control2>& c) {
+        std::vector<gd::Ref<Control2>> others;
+        for (const auto& o : round) {
+            if (o != c) others.push_back(o);
+        }
+        std::sort(others.begin(), others.end(), [&](const gd::Ref<Control2>& x, const gd::Ref<Control2>& y) {
+            return distance(x->centre, c->centre) < distance(y->centre, c->centre);
+        });
+        if (others.size() > 2) others.resize(2);
+        return others;
+    };
+    float best = INFINITY;
+    for (size_t i = 0; i < round.size(); ++i) {
+        for (size_t j = i + 1; j < round.size(); ++j) {
+            const gd::Ref<Control2>& p = round[i];
+            const gd::Ref<Control2>& q = round[j];
+            gfx::Vec2 span = q->centre - p->centre;
+            float len = length(span);
+            if (len <= 0.0f) continue;
+            float t = ((at.x - p->centre.x) * span.x + (at.y - p->centre.y) * span.y) / (len * len);
+            if (t < PAIR_BAND || t > 1.0f - PAIR_BAND) continue;
+            gfx::Vec2 foot = p->centre + span * t;
+            float off = distance(at, foot);
+            if (off > PAIR_WIDTH * std::min(p->radius, q->radius) || off >= best) continue;
+            auto np = neighbours(p);
+            auto nq = neighbours(q);
+            if (std::find(np.begin(), np.end(), q) == np.end() || std::find(nq.begin(), nq.end(), p) == nq.end()) continue;
+            bool on_third = false;
+            for (const auto& o : round) {
+                if (o != p && o != q && distance(at, o->centre) < o->radius) on_third = true;
+            }
+            if (on_third) continue;
+            best = off;
+            a = p;
+            b = q;
+        }
+    }
+    return best < INFINITY;
+}
+
 // The stick's direction bits for an offset from its origin.
 gd::Int TouchControls::stick_bits(gfx::Vec2 offset) const {
     if (length(offset) < DEAD_ZONE * _unit * _stick_scale) return 0;
@@ -372,6 +421,7 @@ void TouchControls::_update() {
             if (own != nullptr && !own->combo()) b |= _turned(own->steps[0]);
         } else {
             b |= f.control->bits;
+            if (f.pair != nullptr) b |= f.pair->bits;
         }
     }
     if (_playing) {

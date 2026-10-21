@@ -99,6 +99,32 @@ T3_TEST(touch_controls, buttons_and_stick) {
     t.expect_equal(f.Pads.touch_bits, gd::Int(0), "the reset clears the router's touch word");
 }
 
+// A finger between two neighbouring face buttons holds both; the diamond's opposite ones never pair.
+T3_TEST(touch_controls, between_two_face_buttons_holds_both) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    gfx::Vec2 square = centre_of(tc, PadState::SQUARE);
+    gfx::Vec2 triangle = centre_of(tc, PadState::TRIANGLE);
+    gfx::Vec2 circle = centre_of(tc, PadState::CIRCLE);
+    gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
+    // source: by hand: the midpoint of two neighbours is the middle of the band
+    t.expect(tc.press(0, (square + triangle) * 0.5f), "between Square and Triangle is taken");
+    t.expect_equal(tc.bits, PadState::SQUARE | PadState::TRIANGLE, "both held (LP + RP)");
+    tc.move(0, (cross + circle) * 0.5f);
+    t.expect_equal(tc.bits, PadState::CROSS | PadState::CIRCLE, "slid between Cross and Circle (LK + RK)");
+    tc.move(0, cross);
+    t.expect_equal(tc.bits, PadState::CROSS, "onto Cross: Cross alone");
+    tc.release(0);
+    tc.press(1, square);
+    t.expect_equal(tc.bits, PadState::SQUARE, "a button's own centre: that button alone");
+    tc.release(1);
+    // source: by hand: the diamond's centre is the midpoint of Square-Circle and Triangle-Cross
+    bool taken = tc.press(2, (square + circle) * 0.5f);
+    t.expect(tc.bits != (PadState::SQUARE | PadState::CIRCLE) && tc.bits != (PadState::TRIANGLE | PadState::CROSS),
+             "the diamond's centre holds no opposite pair");
+    if (taken) tc.release(2);
+}
+
 T3_TEST(touch_controls, stick_belongs_to_its_first_finger) {
     Touch f("none");
     TouchControls& tc = f.tc;

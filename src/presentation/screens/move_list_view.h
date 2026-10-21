@@ -65,6 +65,10 @@ public:
     // The text engine's arguments (an untyped Array of ints and, for the `s` escape, nested strings).
     using Arg = std::variant<gd::Int, gd::PBytes>;
 
+    // Native: the lists fill columns 0-367, the frame shows 8-375 (HudFrame): a window as wide as the
+    // 4:3 frame (a tall one) cut the left list's first 8 columns. Moved onto the shown columns.
+    static constexpr float SHOWN_SHIFT = 8.0f;
+
     std::string root = "";
     GameFlow* flow = nullptr;
     bool shown = false;
@@ -86,6 +90,7 @@ public:
                const std::string& assets_root);
     void show_state(GameFlow* game);
     void _draw() override;
+    gfx::Vec2 pt(float x, float y) const override { return FightCanvas::pt(x + SHOWN_SHIFT, y); }
     void _rows_pass();
     // The column, its lines and its title (the lists' ordering-table entry 0, under the rows).
     void _column(gd::Int p);

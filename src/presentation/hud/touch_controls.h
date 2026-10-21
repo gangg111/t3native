@@ -58,6 +58,12 @@ public:
     static constexpr float BUTTON_SPREAD = 1.35f;
     static constexpr float HIT_SLACK = 1.25f;        // a round button takes touches this far out (of its radius)
     static constexpr float RECT_SLACK = 0.2f;        // units a rectangular button takes touches around it
+    // Native: a finger between two neighbouring round buttons holds both (pair_at): within this share
+    // of the way from either centre's end of the segment between them (0.35: its middle 30 %), and
+    // this far from the segment (of the radius). Neighbours: each one of the other's two nearest
+    // (the diamond's opposite buttons are not), the finger on no third button.
+    static constexpr float PAIR_BAND = 0.35f;
+    static constexpr float PAIR_WIDTH = 0.6f;
     static inline const gfx::Vec2 SYSTEM_SIZE{1.9f, 0.75f};
     static inline const gfx::Vec2 SHOULDER_SIZE{1.5f, 0.8f};
     static constexpr float EDGE = 0.3f;              // units between the controls and the safe area's edges
@@ -98,6 +104,7 @@ public:
         bool stick = false;
         gfx::Vec2 origin;
         gd::Ref<Control2> control;
+        gd::Ref<Control2> pair;              // native: the second face button, a finger between two
     };
 
     gd::Int bits = 0;                        // the pad word of the fingers down now
@@ -184,6 +191,8 @@ public:
     void move(gd::Int index, gfx::Vec2 at);
     void release(gd::Int index);
     gd::Ref<Control2> control_at(gfx::Vec2 at) const;
+    // Native: the two neighbouring round buttons a finger at `at` sits between (PAIR_BAND), else false.
+    bool pair_at(gfx::Vec2 at, gd::Ref<Control2>& a, gd::Ref<Control2>& b) const;
     gd::Int stick_bits(gfx::Vec2 offset) const;
     void _update();
     void reset();
