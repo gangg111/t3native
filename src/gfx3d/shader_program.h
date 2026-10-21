@@ -45,6 +45,9 @@ std::vector<float> parse_default(const ShaderUniform& u);
 struct Program {
     unsigned id = 0;
     unsigned generation = 0;
+    std::string name;                // the shader and pass, for the log
+    // Diagnostics: the draws checked so far (glGetError, glValidateProgram on the first ones).
+    mutable int checked_draws = 0;
     GdShader shader;
     struct User {
         const ShaderUniform* uniform;

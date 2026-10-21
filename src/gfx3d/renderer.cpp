@@ -188,6 +188,14 @@ struct Renderer3D::Impl {
         release();
         generation = gl_generation();
         anisotropy = 0;
+        // The limits that matter for the shaders (diagnostics for drivers that drop draws silently).
+        GLint vu = 0, vt = 0, ft = 0, ct = 0;
+        glGetIntegerv(GL_MAX_VERTEX_UNIFORM_VECTORS, &vu);
+        glGetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &vt);
+        glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &ft);
+        glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &ct);
+        Log::info("gfx3d limits: vertex uniform vectors " + std::to_string(vu) + ", vertex/fragment/combined texture units " +
+                  std::to_string(vt) + "/" + std::to_string(ft) + "/" + std::to_string(ct));
         // GL_EXT_texture_filter_anisotropic: Godot's anisotropic filter for the floor.
         int n = 0;
         glGetIntegerv(GL_NUM_EXTENSIONS, &n);
@@ -577,6 +585,36 @@ void set_array_texture(const Program::User& u, const ShaderValue* v) {
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, n, 1, GL_RGBA, GL_FLOAT, f.data());
 }
 
+// Diagnostics for drivers that drop a draw without a word (Adreno): the first CHECKED_DRAWS draws of
+// each program read glGetError, the first also validates the program; anything wrong goes to the log.
+constexpr int CHECKED_DRAWS = 3;
+
+void check_draw(const Program& p, int count, unsigned query) {
+    if (p.checked_draws >= CHECKED_DRAWS) return;
+    p.checked_draws += 1;
+    GLenum err = glGetError();
+    std::string samples;
+    if (query) {
+        GLuint any = 0;
+        glGetQueryObjectuiv(query, GL_QUERY_RESULT, &any);
+        glDeleteQueries(1, &query);
+        samples = any ? ", samples drawn" : ", NO samples drawn";
+    }
+    std::string line;
+    if (p.checked_draws == 1) {
+        glValidateProgram(p.id);
+        GLint valid = 0;
+        glGetProgramiv(p.id, GL_VALIDATE_STATUS, &valid);
+        char log[1024] = {0};
+        glGetProgramInfoLog(p.id, sizeof log, nullptr, log);
+        line = std::string(valid ? "valid" : "NOT VALID") + (log[0] ? std::string(": ") + log : "");
+    }
+    char hex[16];
+    std::snprintf(hex, sizeof hex, "0x%04X", err);
+    Log::info("gfx3d check: " + p.name + " draw " + std::to_string(p.checked_draws) + " (" + std::to_string(count) +
+              " vertices): glGetError " + hex + samples + (line.empty() ? "" : ", " + line));
+}
+
 // The floats of a user uniform's value (the material's, else the shader's default).
 std::vector<float> uniform_values(const Program::User& u, const ShaderValue* v) {
     const ShaderUniform& s = *u.uniform;
@@ -858,6 +896,12 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
                 glVertexAttribDivisor(A_INST0 + k, 1);
             }
         }
+        // Diagnostics: whether the first checked draws let any sample through (an occlusion query).
+        unsigned query = 0;
+        if (p.checked_draws < CHECKED_DRAWS) {
+            glGenQueries(1, &query);
+            glBeginQuery(GL_ANY_SAMPLES_PASSED, query);
+        }
         if (instances > 0) {
             if (surface.gpu->ibo) glDrawElementsInstanced(prim, surface.gpu->count, GL_UNSIGNED_INT, nullptr, instances);
             else glDrawArraysInstanced(prim, 0, surface.gpu->count, instances);
@@ -870,6 +914,8 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         } else {
             glDrawArrays(prim, 0, surface.gpu->count);
         }
+        if (query) glEndQuery(GL_ANY_SAMPLES_PASSED);
+        check_draw(p, surface.gpu->count, query);
     };
 
     if (sun >= 0) {

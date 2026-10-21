@@ -69,6 +69,12 @@
     X(PFNGLGETINTEGERVPROC, glGetIntegerv)                                                            \
     X(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog)                                                \
     X(PFNGLGETPROGRAMIVPROC, glGetProgramiv)                                                          \
+    X(PFNGLVALIDATEPROGRAMPROC, glValidateProgram)                                                    \
+    X(PFNGLGENQUERIESPROC, glGenQueries)                                                              \
+    X(PFNGLDELETEQUERIESPROC, glDeleteQueries)                                                        \
+    X(PFNGLBEGINQUERYPROC, glBeginQuery)                                                              \
+    X(PFNGLENDQUERYPROC, glEndQuery)                                                                  \
+    X(PFNGLGETQUERYOBJECTUIVPROC, glGetQueryObjectuiv)                                                \
     X(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog)                                                  \
     X(PFNGLGETSHADERIVPROC, glGetShaderiv)                                                            \
     X(PFNGLGETSTRINGPROC, glGetString)                                                                \

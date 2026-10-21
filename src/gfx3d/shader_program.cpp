@@ -321,6 +321,7 @@ std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& na
         return nullptr;
     }
     auto p = std::make_unique<Program>();
+    p->name = name + (pass == Pass::DEPTH ? " [depth]" : " [colour]");
     p->generation = gl_generation();
     p->id = glCreateProgram();
     glAttachShader(p->id, vs);
