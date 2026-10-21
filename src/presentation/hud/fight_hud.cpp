@@ -48,7 +48,11 @@ void FightHud::place(gfx::Rect2 frame_rect) {
 }
 
 gfx::Vec2 FightHud::point(float x, float y) const {
-    return HudFrame::point(box, x + CENTRE_SHIFT, y);
+    gfx::Vec2 p = HudFrame::point(box, x + CENTRE_SHIFT, y);
+    // Native: on a window taller than the 4:3 frame (a foldable unfolded) the HUD keeps its place
+    // from the window's top, not the frame's: all of it is at the top (timer, bars, marks, names).
+    p.y -= std::max(0.0f, box.position.y);
+    return p;
 }
 
 gfx::Vec2 FightHud::unit_scale() const {

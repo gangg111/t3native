@@ -509,6 +509,10 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
             float y = below + th / 2.0f <= size.y ? below : centre.y - half.y - 0.25f * u - th / 2.0f;
             _label(canvas, size_text(key), gfx::Vec2(centre.x, y), th, key == selected ? PRESSED_ALPHA : ALPHA);
         }
+        // The alignment lines of a drag (the centre line it snapped to).
+        gfx::Color guide(0.4f, 0.85f, 1.0f, 0.8f);
+        if (!std::isnan(_guide_x)) canvas.draw_rect(gfx::Rect2(gfx::Vec2(_guide_x - 1.0f, 0), gfx::Vec2(2.0f, size.y)), guide);
+        if (!std::isnan(_guide_y)) canvas.draw_rect(gfx::Rect2(gfx::Vec2(0, _guide_y - 1.0f), gfx::Vec2(size.x, 2.0f)), guide);
         _draw_rect_button(canvas, _reset_rect, "RESET", false);
         _draw_rect_button(canvas, _done_rect, "DONE", false);
         if (static_cast<gd::Int>(custom.size()) < MAX_CUSTOM) _draw_rect_button(canvas, _new_rect, "ADD", false);
@@ -1130,6 +1134,27 @@ void TouchControls::_place(const std::string& key, gfx::Vec2 centre, float scale
     layout();
 }
 
+gfx::Vec2 TouchControls::_snap(const std::string& key, gfx::Vec2 centre) {
+    _guide_x = NAN;
+    _guide_y = NAN;
+    float best_x = SNAP * _unit, best_y = SNAP * _unit;
+    std::vector<std::string> keys;
+    for (const auto& c : _controls) keys.push_back(control_key(*c));
+    if (_stick_zone.has_area()) keys.push_back(STICK_KEY);
+    for (const std::string& other : keys) {
+        if (other == key) continue;
+        gfx::Vec2 c, half;
+        float scale = 1.0f;
+        if (!_placed(other, c, half, scale)) continue;
+        float dx = std::fabs(c.x - centre.x), dy = std::fabs(c.y - centre.y);
+        if (dx < best_x) best_x = dx, _guide_x = c.x;
+        if (dy < best_y) best_y = dy, _guide_y = c.y;
+    }
+    if (!std::isnan(_guide_x)) centre.x = _guide_x;
+    if (!std::isnan(_guide_y)) centre.y = _guide_y;
+    return centre;
+}
+
 // What a finger lands on in the edit: a corner handle (resize) before a control's body (move).
 std::string TouchControls::_edit_target(gfx::Vec2 at, bool& resize) const {
     std::vector<std::string> keys;
@@ -1215,10 +1240,12 @@ bool TouchControls::_edit_pointer(PointerEvent kind, const Pointer& p) {
         } else if (f.resize) {
             _place(f.key, centre, f.start_scale * distance(at, centre) / f.start_reach);
         } else {
-            _place(f.key, at - f.grab, scale);
+            _place(f.key, _snap(f.key, at - f.grab), scale);
         }
         return true;
     }
+    _guide_x = NAN;   // the drag is over: no alignment lines
+    _guide_y = NAN;
     // UP, CANCEL: a pinch's other finger goes on moving the control from where it is now.
     _edit_fingers.erase(found);
     if (_pinch && (_pinch->a == id || _pinch->b == id)) {

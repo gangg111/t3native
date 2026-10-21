@@ -346,12 +346,12 @@ T3_TEST(touch_controls, edit_moves_resizes_saves_and_resets) {
     gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
     float radius = control_of(tc, PadState::CROSS)->radius;
     tc.enter_edit();
-    // Move Cross by (-200, -100).
+    // Move Cross by (-200, -130) (clear of the other controls' centre lines: no snapping).
     tc.pointer(PointerEvent::DOWN, finger(0, cross + gfx::Vec2(5, 5)));
-    tc.pointer(PointerEvent::MOVE, finger(0, cross + gfx::Vec2(-195, -95)));
-    tc.pointer(PointerEvent::UP, finger(0, cross + gfx::Vec2(-195, -95)));
+    tc.pointer(PointerEvent::MOVE, finger(0, cross + gfx::Vec2(-195, -125)));
+    tc.pointer(PointerEvent::UP, finger(0, cross + gfx::Vec2(-195, -125)));
     gfx::Vec2 moved = centre_of(tc, PadState::CROSS);
-    t.expect(same(moved, cross + gfx::Vec2(-200, -100)), "Cross follows the drag");
+    t.expect(same(moved, cross + gfx::Vec2(-200, -130)), "Cross follows the drag");
     // The corner handle: twice as far from the centre, twice the size.
     gfx::Vec2 corner = moved + gfx::Vec2(radius, radius);
     tc.pointer(PointerEvent::DOWN, finger(1, corner));
@@ -380,10 +380,24 @@ T3_TEST(touch_controls, edit_moves_resizes_saves_and_resets) {
     t.expect(approx(c->centre.x - c->radius, 100.0f), "Circle stops at the safe area's left edge");
     // The stick's rest moves, and the stick then starts there.
     gfx::Vec2 hint = tc._stick_hint;
+    // A place clear of every control's centre lines (no snapping), 150 px right.
+    gfx::Vec2 to = hint + gfx::Vec2(150, 0);
+    for (float dy = -40.0f; dy > -300.0f; dy -= 5.0f) {
+        bool clear = true;
+        for (const auto& k : tc._controls) {
+            gfx::Vec2 kc = k->rect.size.x == 0 ? k->centre : k->rect.position + k->rect.size * 0.5f;
+            float near = TouchControls::SNAP * tc._unit * 1.5f;
+            if (std::fabs(kc.x - (hint.x + 150.0f)) < near || std::fabs(kc.y - (hint.y + dy)) < near) clear = false;
+        }
+        if (clear) {
+            to = hint + gfx::Vec2(150, dy);
+            break;
+        }
+    }
     tc.pointer(PointerEvent::DOWN, finger(5, hint));
-    tc.pointer(PointerEvent::MOVE, finger(5, hint + gfx::Vec2(150, -60)));
-    tc.pointer(PointerEvent::UP, finger(5, hint + gfx::Vec2(150, -60)));
-    t.expect(same(tc._stick_hint, hint + gfx::Vec2(150, -60)), "the stick's rest follows the drag");
+    tc.pointer(PointerEvent::MOVE, finger(5, to));
+    tc.pointer(PointerEvent::UP, finger(5, to));
+    t.expect(same(tc._stick_hint, to), "the stick's rest follows the drag");
     tc.pointer(PointerEvent::DOWN, finger(6, tc._done_rect.position + tc._done_rect.size * 0.5f));
     t.expect(!tc.editing, "Done");
     t.expect(std::filesystem::exists(file), "the layout is saved");
@@ -665,6 +679,29 @@ T3_TEST(touch_controls, own_combo_plays_its_steps) {
     t.expect(g.tc.parse_layout("{\"buttons\": [{\"id\": 3, \"bits\": 192, \"label\": \"x\"}], \"screens\": {}}"), "build 9's file");
     t.expect(g.tc.custom.size() == 1 && g.tc.custom[0].steps == std::vector<gd::Int>{192}, "one step");
     tc.reset();
+}
+
+// A dragged control's centre snaps to another control's centre line within SNAP units, and the
+// guide line shows while the finger is down.
+T3_TEST(touch_controls, drag_snaps_to_centre_lines) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.visible = true;
+    tc.enter_edit();
+    gfx::Vec2 triangle = centre_of(tc, PadState::TRIANGLE);
+    gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
+    // source: by hand: the unit is 720 * 0.085 = 61.2 px, SNAP 0.3 units = 18.36 px
+    // Cross dragged 10 px right of Triangle's line (and down, away from any row): onto the line.
+    gfx::Vec2 to(triangle.x + 10.0f, cross.y + 200.0f);
+    tc.pointer(PointerEvent::DOWN, finger(0, cross));
+    tc.pointer(PointerEvent::MOVE, finger(0, to));
+    t.expect(approx(centre_of(tc, PadState::CROSS).x, triangle.x), "10 px off Triangle's line: on it");
+    t.expect(approx(tc._guide_x, triangle.x), "the vertical guide at Triangle's x");
+    // 30 px off (beyond 18.36): where the finger is.
+    tc.pointer(PointerEvent::MOVE, finger(0, gfx::Vec2(triangle.x + 30.0f, cross.y + 200.0f)));
+    t.expect(approx(centre_of(tc, PadState::CROSS).x, triangle.x + 30.0f), "30 px off: not snapped");
+    tc.pointer(PointerEvent::UP, finger(0, gfx::Vec2(triangle.x + 30.0f, cross.y + 200.0f)));
+    t.expect(std::isnan(tc._guide_x) && std::isnan(tc._guide_y), "no guide once the finger is up");
 }
 
 // Touch directions' D-pad: a finger in the zone points from the cross's centre (the stick's rest),

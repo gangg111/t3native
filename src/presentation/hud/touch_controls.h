@@ -300,6 +300,11 @@ public:
     // A placed control's centre, half extent and scale (false: no such control).
     bool _placed(const std::string& key, gfx::Vec2& centre, gfx::Vec2& half, float& scale) const;
     void _place(const std::string& key, gfx::Vec2 centre, float scale);
+    // Alignment while a control is dragged: its centre within SNAP units of another control's centre
+    // line (vertical or horizontal) goes onto it, and the line shows (_guide_x / _guide_y, NAN: none).
+    static constexpr float SNAP = 0.3f;
+    float _guide_x = NAN, _guide_y = NAN;
+    gfx::Vec2 _snap(const std::string& key, gfx::Vec2 centre);
     void _apply_placements(const gfx::Rect2& area);
     gfx::Vec2 _clamp_centre(gfx::Vec2 centre, gfx::Vec2 half, const gfx::Rect2& area) const;
     std::string _edit_target(gfx::Vec2 at, bool& resize) const;

@@ -28,7 +28,8 @@ public:
     // Native: the HUD is laid out about x = 184 (the timer, the bars at 10 and 202 + 156), the
     // scene's centre is 192 (HudFrame: the 368 columns shown from x = 8). The game showed it 8
     // columns left of the centre, which a wide window makes plain (the left bar at its edge): the
-    // HUD is moved onto the scene's centre.
+    // HUD is moved onto the scene's centre; and to the window's top where the window is taller
+    // than the frame (point()).
     static constexpr float CENTRE_SHIFT = 8.0f;
     static constexpr float TIMER_STEP = 15.0f;
     static constexpr float TIMER_Y = 22.0f;
