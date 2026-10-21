@@ -21,7 +21,7 @@ void PerfLog::part(const std::string& name, double ms) {
 
 std::string PerfLog::frame_parts() {
     std::string out;
-    char item[64];
+    char item[96];
     for (const auto& [name, ms] : frame_parts_) {
         std::snprintf(item, sizeof item, " %s=%.1f", name.c_str(), ms);
         out += item;
@@ -77,7 +77,7 @@ std::string PerfLog::take(double now, int state, const std::string& scene) {
                   now, state, fps, mid, longest, jank, update_mean, percentile(update_ms_, 0.95), update_max, render_mean,
                   render_max, gpu);
     std::string out = line;
-    char item[64];
+    char item[96];
     for (const auto& [name, p] : parts_) {
         std::snprintf(item, sizeof item, " %s=%.2f/%.2fms", name.c_str(), p.sum / n, p.longest);
         out += item;
@@ -94,8 +94,20 @@ std::string PerfLog::take(double now, int state, const std::string& scene) {
         std::snprintf(item, sizeof item, " shadow/scene/post/2d=%.2f/%.2f/%.2f/%.2fms", m[0], m[1], m[2], m[3]);
         out += item;
     }
+    bool shadow = false;
+    for (const std::vector<double>& v : shadow_parts) shadow = shadow || !v.empty();
+    if (shadow) {
+        double m[SHADOW_PARTS];
+        for (int i = 0; i < SHADOW_PARTS; ++i) {
+            const std::vector<double>& v = shadow_parts[i];
+            m[i] = v.empty() ? 0.0 : std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
+        }
+        std::snprintf(item, sizeof item, " shadow clear/c0/c1/c2/c3=%.2f/%.2f/%.2f/%.2f/%.2fms", m[0], m[1], m[2], m[3], m[4]);
+        out += item;
+    }
     if (!scene.empty()) out += " " + scene;
     for (std::vector<double>& v : gpu_parts) v.clear();
+    for (std::vector<double>& v : shadow_parts) v.clear();
     // A new window from this frame on.
     start_ = now;
     update_ms_.clear();
@@ -115,6 +127,7 @@ void PerfLog::reset() {
     intervals_ms_.clear();
     gpu_ms.clear();
     for (std::vector<double>& v : gpu_parts) v.clear();
+    for (std::vector<double>& v : shadow_parts) v.clear();
 }
 
 }  // namespace t3

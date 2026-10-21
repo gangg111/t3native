@@ -814,9 +814,11 @@ void GameApp::frame(double now) {
     double render_start = Platform::now();
     // The GPU timer's query is the frame's first GL call, which waits for a free buffer of the
     // window: it belongs to the render time.
-    // Every other frame its passes are timed instead (GPU timers do not nest).
-    _gpu_passes = measured && (++_perf_frames & 1) == 0;
-    if (measured && !_gpu_passes) gpu_timer.begin();
+    // In turn the whole frame, its passes, the shadow pass's parts (GPU timers do not nest).
+    int turn = static_cast<int>(++_perf_frames % 3);
+    _gpu_passes = measured && turn == 1;
+    _gpu_shadow_parts = measured && turn == 2;
+    if (measured && turn == 0) gpu_timer.begin();
     _render();
     if (!measured) {
         perf_log.reset();
@@ -840,6 +842,7 @@ void GameApp::frame(double now) {
     _perf_note.clear();
     gpu_timer.collect(perf_log.gpu_ms);
     for (int i = 0; i < PerfLog::GPU_PARTS; ++i) gpu_passes[i].collect(perf_log.gpu_parts[i]);
+    for (int i = 0; i < PerfLog::SHADOW_PARTS; ++i) gpu_shadow[i].collect(perf_log.shadow_parts[i]);
     // What the fight draws: its stage and the version (the arcade's scenes and models cost more).
     std::string scene;
     if (fight_view != nullptr && fight_view->visible) {
@@ -852,6 +855,17 @@ void GameApp::frame(double now) {
 // Native: the GPU timer of pass `pass` (PerfLog::GpuPart) from here on, the previous one's ended
 // (-1: none); only in the frames timed in passes.
 void GameApp::_gpu_pass(int pass) {
+    if (_gpu_shadow_parts) {
+        // The shadow's clear (PASS_SHADOW), its cascades (PASS_CASCADE + k); anything else ends them.
+        if (_gpu_pass_open >= 0) gpu_shadow[_gpu_pass_open].end();
+        _gpu_pass_open = -1;
+        int part = pass == gfx3d::Renderer3D::PASS_SHADOW ? 0 : pass >= gfx3d::Renderer3D::PASS_CASCADE ? 1 + pass - gfx3d::Renderer3D::PASS_CASCADE : -1;
+        if (part < 0 || part >= PerfLog::SHADOW_PARTS) return;
+        gpu_shadow[part].begin();
+        _gpu_pass_open = part;
+        return;
+    }
+    if (pass >= gfx3d::Renderer3D::PASS_CASCADE) return;   // the cascades are inside the shadow pass
     if (_gpu_pass_open >= 0) gpu_passes[_gpu_pass_open].end();
     _gpu_pass_open = -1;
     if (!_gpu_passes || pass < 0) return;

@@ -954,6 +954,42 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         glClear(GL_DEPTH_BUFFER_BIT);
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(1.5f, 2.0f);
+        // Native: which cascades each caster's shadow can be read from. A pixel reads the cascade
+        // its view depth falls in (t3_shadow), and a caster's shadow lands within its bounds swept
+        // away from the light down to RECEIVER_DROP below their lowest point: the cascades whose
+        // depth range misses that volume's never read it, so it is not drawn there (a fighter,
+        // skinned on the GPU in each cascade it is drawn in, cost a phone most of its frame).
+        // Without bounds, or under a sun near the horizon, a caster goes into every cascade.
+        constexpr float RECEIVER_DROP = 2.0f, DEPTH_MARGIN = 0.5f;
+        float split_at[SHADOW_CASCADES];
+        for (int k = 0; k < SHADOW_CASCADES; ++k) split_at[k] = fade * SHADOW_SPLITS[k];
+        std::vector<unsigned> cascades_of(items.size(), (1u << SHADOW_CASCADES) - 1);
+        for (size_t i = 0; i < items.size(); ++i) {
+            const Item& it = items[i];
+            AABB box = it.instance->custom_aabb.has_volume() ? it.instance->custom_aabb : it.surface->aabb;
+            if (!box.has_volume() || lz.y < 0.05f) continue;
+            Vector3 world[8];
+            float top = -1e30f, bottom = 1e30f;
+            for (int c = 0; c < 8; ++c) {
+                world[c] = it.model.xform(Vector3(box.position.x + ((c & 1) ? box.size.x : 0.0f),
+                                                  box.position.y + ((c & 2) ? box.size.y : 0.0f),
+                                                  box.position.z + ((c & 4) ? box.size.z : 0.0f)));
+                top = std::max(top, world[c].y), bottom = std::min(bottom, world[c].y);
+            }
+            Vector3 sweep = lz * -((top - (bottom - RECEIVER_DROP)) / lz.y);
+            float near_d = 1e30f, far_d = -1e30f;
+            for (int c = 0; c < 16; ++c) {
+                float d = -view.xform(c < 8 ? world[c] : world[c - 8] + sweep).z;
+                near_d = std::min(near_d, d), far_d = std::max(far_d, d);
+            }
+            near_d -= DEPTH_MARGIN, far_d += DEPTH_MARGIN;
+            unsigned mask = 0;
+            for (int k = 0; k < SHADOW_CASCADES; ++k) {
+                float lo = k == 0 ? -1e30f : split_at[k - 1], hi = k == SHADOW_CASCADES - 1 ? 1e30f : split_at[k];
+                if (far_d >= lo && near_d < hi) mask |= 1u << k;
+            }
+            cascades_of[i] = mask;
+        }
         float from = camera.near;
         for (int k = 0; k < SHADOW_CASCADES; ++k) {
             float to = fade * SHADOW_SPLITS[k];
@@ -993,12 +1029,15 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
             shadow_normal_bias[k] = l.shadow_normal_bias * texel_world;
             shadow_depth_bias[k] = l.shadow_bias * texel_world / depth_range;
 
+            if (on_pass) on_pass(PASS_CASCADE + k);
             glViewport((k & 1) * quadrant, (k >> 1) * quadrant, quadrant, quadrant);
             Mat4 lv = Mat4::from(light_view), lw = Mat4::from(light_world), lpm = Mat4::from(lp);
-            for (Item& it : items) {
+            for (size_t i = 0; i < items.size(); ++i) {
+                Item& it = items[i];
                 if (it.look.transparent || !it.look.depth || it.instance->cast_shadow == GeometryInstance3D::SHADOW_CASTING_SETTING_OFF)
                     continue;
                 if (!(l.light_cull_mask & it.instance->layers)) continue;
+                if (!(cascades_of[i] & (1u << k))) continue;
                 draw(it, *it.look.depth, lv, lw, lpm, quadrant, quadrant, false);
                 ++stats_.shadow_draws;
             }

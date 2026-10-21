@@ -175,6 +175,7 @@ public:
     PerfLog perf_log;               // native: the performance log (setting perf_log)
     gfx::GpuTimer gpu_timer;
     gfx::GpuTimer gpu_passes[PerfLog::GPU_PARTS];   // native: the performance log's GPU per pass
+    gfx::GpuTimer gpu_shadow[PerfLog::SHADOW_PARTS];  // and the shadow pass's parts
     // The 60 Hz steps due `elapsed` seconds after the first frame (that one runs step 1). The step
     // boundaries sit a quarter step after the display's refreshes: at 60 and 120 Hz the refreshes
     // fall exactly on them, and the clock's jitter (about a millisecond) gave a refresh no step and
@@ -274,7 +275,8 @@ private:
     bool _arcade_version() { return Settings.text("stage_backdrops") == "arcade"; }
     void _perf(const std::string& what);
     void _gpu_pass(int pass);
-    bool _gpu_passes = false;      // this frame's passes are timed (every other measured frame)
+    bool _gpu_passes = false;      // this frame's passes are timed (every third measured frame)
+    bool _gpu_shadow_parts = false;   // this frame's shadow pass parts are (the next third)
     int _gpu_pass_open = -1;
     uint64_t _perf_frames = 0;
     gd::Ref<GameFlow> _make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on);

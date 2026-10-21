@@ -39,8 +39,9 @@ public:
     static void graphics_lost();
 
     // Native: told as each pass of `render` begins (the performance log's GPU timers per pass):
-    // the sun's shadow (when there is one), the scene with its sky, the resolve, glow and encode.
-    enum Pass { PASS_SHADOW, PASS_SCENE, PASS_POST };
+    // the sun's shadow (when there is one: its clear, then PASS_CASCADE + k for each cascade's
+    // casters), the scene with its sky, the resolve, glow and encode.
+    enum Pass { PASS_SHADOW, PASS_SCENE, PASS_POST, PASS_CASCADE = 8 };   // apart from PerfLog::GpuPart's 2D (3)
     std::function<void(int)> on_pass;
 
     struct Stats {
