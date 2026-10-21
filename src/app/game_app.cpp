@@ -794,10 +794,11 @@ void GameApp::frame(double now) {
     double end = Platform::now();
     double update_ms = (render_start - cpu_start) * 1000.0, render_ms = (end - render_start) * 1000.0;
     perf_log.frame(elapsed, update_ms, render_ms);
+    std::string parts = perf_log.frame_parts();
     if (update_ms + render_ms > PerfLog::SPIKE_MS) {
         if (gfx::gl_programs() != programs) _perf(std::to_string(gfx::gl_programs() - programs) + " shaders linked");
         if (gfx::gl_uploads() != uploads) _perf(std::to_string(gfx::gl_uploads() - uploads) + " textures uploaded");
-        Platform::perf_line(PerfLog::spike(elapsed, update_ms, render_ms, static_cast<int>(flow->state), _perf_note));
+        Platform::perf_line(PerfLog::spike(elapsed, update_ms, render_ms, static_cast<int>(flow->state), _perf_note) + parts);
     }
     _perf_note.clear();
     gpu_timer.collect(perf_log.gpu_ms);
@@ -833,6 +834,7 @@ void GameApp::_physics_process() {
     touch.set_shoulders(TouchControls::shoulders_shown(*flow));
     touch.set_playback(_playback());
     if (Pads.escape_pressed && flow->pause_menu_open()) flow->escape_pressed = true;
+    double t = Platform::now();
     for (gd::Int i = 0; i < options.speed; ++i) {
         gd::PI32 pads = _pads();
         steps += 1;
@@ -844,14 +846,24 @@ void GameApp::_physics_process() {
         }
         _prev_pads = both;
     }
+    // Native: the performance log's parts of the update.
+    auto part = [&](const char* name) {
+        double now = Platform::now();
+        perf_log.part(name, (now - t) * 1000.0);
+        t = now;
+    };
+    part("steps");
     _rumble();
     // The movie player's _process (and its VideoStreamPlayer's): native, once a tick with the
     // tick's time, so the picture follows the app's 60 Hz steps.
     movie._process(1.0 / 60.0);
+    part("movie");
     // Native: the director's Tween (the music fade) as the scene tree would process it, and the
     // music decoded ahead of the audio thread.
     audio_director->_process(1.0 / 60.0);
+    part("audio");
     mixer.update();
+    part("mixer");
 }
 
 // The two fighters whose voices the audio plays.

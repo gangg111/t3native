@@ -12,6 +12,7 @@
 // rate, which an LTPO screen changes); update: mean / 95th percentile / longest; render, gpu:
 // mean / longest ("gpu=-" without GPU timers). A frame over SPIKE_MS gets a line of its own at
 // once (`spike`) with what the app did in it, when it knows.
+#include <map>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,11 @@ public:
 
     // One frame at `now` (seconds) that took `update_ms` + `render_ms` on the game thread.
     void frame(double now, double update_ms, double render_ms);
+    // A named part of this frame's update (steps, audio, mixer, movie): the window's line adds
+    // "name=mean/longest" for each, the spike line the frame's own.
+    void part(const std::string& name, double ms);
+    // This frame's parts as " name=ms ..." (for a spike line), then forgotten for the next frame.
+    std::string frame_parts();
     // The window's line once WINDOW seconds have passed since it began, else ""; a new window then.
     std::string take(double now, int state);
     // A long frame's own line: "spike t=12.3s 203.0ms update=200.1 render=2.9 state=8 fight view".
@@ -42,6 +48,11 @@ private:
     double start_ = -1.0;    // the window's first frame
     double last_ = -1.0;     // the previous frame
     std::vector<double> update_ms_, render_ms_, intervals_ms_;
+    struct Part {
+        double sum = 0.0, longest = 0.0;
+    };
+    std::map<std::string, Part> parts_;          // the window's
+    std::map<std::string, double> frame_parts_;  // this frame's
 };
 
 }  // namespace t3

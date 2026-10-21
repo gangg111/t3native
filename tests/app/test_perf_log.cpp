@@ -42,3 +42,22 @@ T3_TEST(perf_log, spike_line) {
     t.expect_equal(PerfLog::spike(1.0, 30.0, 0.0, 2, ""), std::string("spike t=1.0s 30.0ms update=30.0 render=0.0 state=2"),
                    "without a note");
 }
+
+T3_TEST(perf_log, update_parts) {
+    PerfLog log;
+    // Two frames: steps 1 + 2 then 3 ms, mixer 4 ms in the second only.
+    log.frame(0.0, 3.0, 1.0);
+    log.part("steps", 1.0);
+    log.part("steps", 2.0);
+    // source: by hand: a frame's parts summed, in name order
+    t.expect_equal(log.frame_parts(), std::string(" steps=3.0"), "the first frame's parts");
+    log.frame(5.0, 7.0, 1.0);
+    log.part("steps", 3.0);
+    log.part("mixer", 4.0);
+    t.expect_equal(log.frame_parts(), std::string(" mixer=4.0 steps=3.0"), "the second frame's");
+    std::string line = log.take(5.0, 8);
+    // source: by hand: mean over the 2 frames: mixer 4 / 2 = 2.00, steps 6 / 2 = 3.00; longest 4 and 3
+    const std::string tail = " mixer=2.00/4.00ms steps=3.00/3.00ms";
+    t.expect(line.size() > tail.size() && line.substr(line.size() - tail.size()) == tail,
+             "the window's line ends with the parts: " + line);
+}

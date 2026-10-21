@@ -15,6 +15,24 @@ void PerfLog::frame(double now, double update_ms, double render_ms) {
     render_ms_.push_back(render_ms);
 }
 
+void PerfLog::part(const std::string& name, double ms) {
+    frame_parts_[name] += ms;
+}
+
+std::string PerfLog::frame_parts() {
+    std::string out;
+    char item[64];
+    for (const auto& [name, ms] : frame_parts_) {
+        std::snprintf(item, sizeof item, " %s=%.1f", name.c_str(), ms);
+        out += item;
+        Part& p = parts_[name];
+        p.sum += ms;
+        p.longest = std::max(p.longest, ms);
+    }
+    frame_parts_.clear();
+    return out;
+}
+
 std::string PerfLog::spike(double now, double update_ms, double render_ms, int state, const std::string& note) {
     char line[256];
     std::snprintf(line, sizeof line, "spike t=%.1fs %.1fms update=%.1f render=%.1f state=%d%s%s", now, update_ms + render_ms,
@@ -58,16 +76,25 @@ std::string PerfLog::take(double now, int state) {
     std::snprintf(line, sizeof line, "t=%.0fs state=%d fps=%.1f frame=%.2f/%.1fms jank=%ld update=%.2f/%.2f/%.2fms render=%.2f/%.2fms %s",
                   now, state, fps, mid, longest, jank, update_mean, percentile(update_ms_, 0.95), update_max, render_mean,
                   render_max, gpu);
+    std::string out = line;
+    char item[64];
+    for (const auto& [name, p] : parts_) {
+        std::snprintf(item, sizeof item, " %s=%.2f/%.2fms", name.c_str(), p.sum / n, p.longest);
+        out += item;
+    }
+    parts_.clear();
     // A new window from this frame on.
     start_ = now;
     update_ms_.clear();
     render_ms_.clear();
     intervals_ms_.clear();
     gpu_ms.clear();
-    return line;
+    return out;
 }
 
 void PerfLog::reset() {
+    parts_.clear();
+    frame_parts_.clear();
     start_ = -1.0;
     last_ = -1.0;
     update_ms_.clear();
