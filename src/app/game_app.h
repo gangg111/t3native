@@ -45,6 +45,7 @@
 #include "presentation/screens/select_view.h"
 #include "presentation/screens/settings_button.h"
 #include "app/perf_log.h"
+#include "app/session_log.h"
 #include "app/system_options.h"
 #include "gfx/gpu_timer.h"
 #include "presentation/screens/settings_view.h"
@@ -237,6 +238,44 @@ private:
     gd::Ref<VramImage> vram_system;
     gd::Ref<TextLocale> locale;
     gd::Ref<RuleSet> rule_set;
+    bool _fixes = false;            // the rule set's gameplay fixes
+    gd::Ref<FlowData> _flow_data;
+
+    // ---- native: save states (SessionLog: the session's inputs, a load steps a new flow through them)
+    static constexpr const char* STATE_FILE = "savestate.bin";
+    static constexpr double RESIM_BUDGET = 0.010;   // seconds of a frame a load steps for
+    static constexpr int RESIM_BATCH = 64;          // steps between looks at the clock
+    static constexpr gd::Int NOTICE_FRAMES = 120;
+    struct Resim {
+        SessionLog log;
+        gd::Ref<GameFlow> flow;
+        gd::Ref<RuleSet> rules;
+        bool fixes = false;
+        size_t step = 0, event = 0;
+        bool failed = false;
+        double started = 0.0;
+        std::vector<gd::PI32> music;   // (kind, a, b) since the last track began
+    };
+    SessionLog _log;                // this session's, from its start (not in a trace replay)
+    bool _logging = false;
+    bool _stepping = false;         // inside flow->step (events then belong to the step)
+    SessionLog _saved;              // the save state (user://savestate.bin)
+    bool _has_saved = false;
+    std::unique_ptr<Resim> _resim;  // a load in progress
+    gd::Int _notice_frames = 0;
+    gd::Ref<GameFlow> _make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on);
+    void _map_blocks();
+    void _record(uint8_t kind, int32_t value, std::vector<uint8_t> bytes = {});
+    const SessionLog::Event* _replayed(uint8_t kind);
+    bool _apply_change(const SessionLog::Event& e);
+    std::string _state_path() const;
+    void _read_saved_state();
+    void _save_state();
+    void _start_load();
+    void _resimulate(double budget);
+    void _note_music(const SimEvents& events);
+    void _take_loaded();
+    void _notice(const std::string& text, gd::Int frames = NOTICE_FRAMES);
     gd::Ref<FlowTrace> _replay;   // the flow trace a replay reads its pads from
     gd::Int seed = -1;
     gd::PI32 _slots{-1, -1};

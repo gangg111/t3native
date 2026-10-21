@@ -27,6 +27,8 @@ public:
     static gfx::Rect2 BOX() { return gfx::Rect2(0x94, 0x64, 0x48, 0x41); }          // dark blue (0, 16, 48); 0x55 high in Tekken Ball
     static gfx::Rect2 BORDER() { return gfx::Rect2(0x93, 0x62, 0x4A, 0x41 + 4); }   // light grey (224, 224, 224) under it
     static constexpr gd::Int BALL_BOX_HEIGHT = 0x55;
+    static constexpr gd::Int BOX_MARGIN = 9;     // native: a wider box's room beside its longest item
+    static constexpr gd::Int NOTICE_GAP = 12;    // native: the notice under the box
     static gfx::Color BOX_COLOUR() { return gfx::Color::c8(0, 16, 48); }
     static gfx::Color BORDER_COLOUR() { return gfx::Color::c8(224, 224, 224); }
     static constexpr gd::Int LABEL_Y = 0x78;
@@ -51,7 +53,9 @@ public:
     FightHud* hud = nullptr;
     gd::Int player = 0;                  // 1 or 2 while shown
     gd::Int cursor = 0;
-    gd::Int items = PauseMenu::ITEMS.size() - 1;
+    gd::Int items = 3;
+    gd::Arr<gd::Int> pages;              // each item's page (PauseMenu::pages)
+    std::string notice;                  // native: the save states' notice (the app clears it)
     bool blink = false;
     bool how_to = false;                 // Tekken Ball's HOW TO page is shown
     gfx::TextureRef _how_to_picture;

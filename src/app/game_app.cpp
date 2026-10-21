@@ -176,13 +176,16 @@ void GameApp::_on_settings_closed() {
 void GameApp::_switch_card() {
     card->select(Settings.number("memory_card"));
     card->load_into(flow->progress);
+    _record(SessionLog::SWITCH_CARD, 0, SessionLog::bytes_of(flow->progress->bytes));
     flow->goto_transition(GameFlow::State::MENU);
 }
 
 // The settings' Gameplay fixes on the rule set the game shares (RuleSet is read by the fights and
 // the progress rules, so it is changed in place).
 void GameApp::_apply_rules() {
-    rule_set->set_gameplay_fixes(Settings.flag("gameplay_fixes"));
+    _fixes = Settings.flag("gameplay_fixes");
+    rule_set->set_gameplay_fixes(_fixes);
+    _record(SessionLog::RULES, _fixes ? 1 : 0);
 }
 
 // The game texts' language on everything that shows them (a trace replay keeps the Japanese
@@ -327,9 +330,8 @@ void GameApp::_load() {
     // _ready: `movie.visible = false`, `movie.finished.connect(_on_movie_finished)`.
     movie._ready(&mixer);
     movie.finished.push_back([this] { _on_movie_finished(); });
-    flow = gd::make<GameFlow>(content, data, rule_set, seed);
-    flow->performance_factory = [this](gd::Int number) { return _new_performance(number); };
-    flow->movies_available = _movies_present() && !options.skip_movies;
+    _flow_data = data;
+    flow = _make_flow(seed, rule_set, _movies_present() && !options.skip_movies);
     if (flow->movies_available) {
         movies = JsonFile::read(gd::path_join(root, "movies/movies.json"));
     }
@@ -342,8 +344,17 @@ void GameApp::_load() {
     card->defaults = flow->progress->save_data();
     card->select(Settings.number("memory_card"));
     card->fresh_progress(flow->progress);
-    flow->card_loader = [this] { return card->read(); };
-    flow->options->save_writer = [this](const gd::PBytes& bytes) { return card->write(bytes); };
+    // Native: the session's log from here (save states; never in a trace replay or a pad script's
+    // development run, whose inputs come from elsewhere).
+    _logging = !_replay;
+    if (_logging) {
+        _log = SessionLog{};
+        _log.seed = seed;
+        _log.movies = flow->movies_available;
+        _log.fixes = _fixes;
+        _log.progress = SessionLog::bytes_of(flow->progress->bytes);
+        _read_saved_state();
+    }
     // Native: the settings as OPTION MODE's SYSTEM OPTION (not in a trace replay: the game's flow
     // as recorded).
     if (!_replay) {
@@ -360,24 +371,12 @@ void GameApp::_load() {
             _tap = false;
             if (Settings.number("memory_card") != card->card) _switch_card();
         };
-        flow->options->system_option = true;
-        flow->options->system_step = [this] { return system_options.step(*flow, *flow->options); };
     }
     if (_replay) {
         // The trace's pokes (unlocks the scenario starts with).
         for (const gd::PI64& poke : _replay->pokes()) flow->progress->put8(poke[0] - GameProgress::BASE, poke[1]);
     }
-    // _map_blocks: the remake's byte blocks at their game addresses, for the screens' drawing.
-    ram->map(GameProgress::BASE, flow->progress);
-    ram->map(ModeRegion::BASE, flow->region);
-    ram->map(CharacterSelect::BASE, flow->select->ctx);
-    ram->map(CharacterSelect::CELLS_BASE, flow->select->cells);
-    ram->map(RankingScreen::TABLE_BASE, flow->ranking->table);
-    ram->map(RankingScreen::NAME_BASE, flow->ranking->name);
-    ram->map(RankingScreen::BACKDROP_BASE, flow->ranking->backdrop);
-    ram->map(ResultScreens::BASE, flow->results->state);
-    ram->map(ResultScreens::BANNER_BASE, flow->results->banner);
-    ram->map(PracticeMode::BASE, flow->practice->s);
+    _map_blocks();
     // `var enbu_view := EnbuView.new()` added to the game node (the root of its 3D tree here).
     enbu_view = gd::make<EnbuView>();
     enbu_view->set_as_tree_root(true);
@@ -398,6 +397,253 @@ void GameApp::_load() {
     mode_hud.setup_modes(hud_data, ram, vram_system, content->mode_ram("force"), screens_dir);
     pause_view.setup(&hud);
     _apply_texts();
+}
+
+// A GameFlow with the app's callbacks. Native: each callback's result goes into the session's
+// log, or, while a save state is loaded (_resim), comes from its log instead.
+gd::Ref<GameFlow> GameApp::_make_flow(gd::Int flow_seed, const gd::Ref<RuleSet>& rules, bool movies_on) {
+    gd::Ref<GameFlow> f = gd::make<GameFlow>(content, _flow_data, rules, flow_seed);
+    f->performance_factory = [this](gd::Int number) { return _new_performance(number); };
+    f->movies_available = movies_on;
+    f->card_loader = [this] {
+        if (_resim) {
+            const SessionLog::Event* e = _replayed(SessionLog::CARD_READ);
+            gd::PBytes b;
+            if (e != nullptr) {
+                b.resize(static_cast<gd::Int>(e->bytes.size()));
+                SessionLog::put_bytes(b, e->bytes);
+            }
+            return b;
+        }
+        gd::PBytes b = card->read();
+        _record(SessionLog::CARD_READ, 0, SessionLog::bytes_of(b));
+        return b;
+    };
+    f->options->save_writer = [this](const gd::PBytes& bytes) {
+        if (_resim) {
+            const SessionLog::Event* e = _replayed(SessionLog::SAVE_WRITE);
+            return e != nullptr ? gd::Int(e->value) : gd::Int(SaveStore::CARD_DONE);
+        }
+        gd::Int result = card->write(bytes);
+        _record(SessionLog::SAVE_WRITE, static_cast<int32_t>(result));
+        return result;
+    };
+    // Native: the settings as OPTION MODE's SYSTEM OPTION (not in a trace replay: the game's flow
+    // as recorded).
+    if (!_replay) {
+        GameFlow* raw = f.get();
+        f->options->system_option = true;
+        f->options->system_step = [this, raw] {
+            if (_resim) {
+                const SessionLog::Event* e = _replayed(SessionLog::SYSTEM_STEP);
+                return e != nullptr && e->value != 0;
+            }
+            bool left = system_options.step(*raw, *raw->options);
+            _record(SessionLog::SYSTEM_STEP, left ? 1 : 0);
+            return left;
+        };
+    }
+    return f;
+}
+
+// _map_blocks: the remake's byte blocks at their game addresses, for the screens' drawing.
+void GameApp::_map_blocks() {
+    ram->map(GameProgress::BASE, flow->progress);
+    ram->map(ModeRegion::BASE, flow->region);
+    ram->map(CharacterSelect::BASE, flow->select->ctx);
+    ram->map(CharacterSelect::CELLS_BASE, flow->select->cells);
+    ram->map(RankingScreen::TABLE_BASE, flow->ranking->table);
+    ram->map(RankingScreen::NAME_BASE, flow->ranking->name);
+    ram->map(RankingScreen::BACKDROP_BASE, flow->ranking->backdrop);
+    ram->map(ResultScreens::BASE, flow->results->state);
+    ram->map(ResultScreens::BANNER_BASE, flow->results->banner);
+    ram->map(PracticeMode::BASE, flow->practice->s);
+}
+
+// ---- save states (SessionLog)
+
+// An event of the live session: inside the step running now, else before the next one.
+void GameApp::_record(uint8_t kind, int32_t value, std::vector<uint8_t> bytes) {
+    if (!_logging || _resim) return;
+    SessionLog::Event e;
+    e.inside = _stepping;
+    e.step = static_cast<uint32_t>(_stepping ? _log.steps.size() - 1 : _log.steps.size());
+    e.kind = kind;
+    e.value = value;
+    e.bytes = std::move(bytes);
+    _log.events.push_back(std::move(e));
+}
+
+// The next logged event of the replayed step, of this kind; the app's own changes logged before
+// it (the rules, another card) are made again on the way. Null (and the load failed) when the log
+// and the replay part ways.
+const SessionLog::Event* GameApp::_replayed(uint8_t kind) {
+    Resim& r = *_resim;
+    while (r.event < r.log.events.size()) {
+        const SessionLog::Event& e = r.log.events[r.event];
+        if (!e.inside || e.step != r.step) break;
+        r.event += 1;
+        if (e.kind == kind) return &e;
+        if (!_apply_change(e)) break;
+    }
+    r.failed = true;
+    return nullptr;
+}
+
+// The rules or another card's progress, as the session changed them.
+bool GameApp::_apply_change(const SessionLog::Event& e) {
+    Resim& r = *_resim;
+    if (e.kind == SessionLog::RULES) {
+        r.rules->set_gameplay_fixes(e.value != 0);
+        r.fixes = e.value != 0;
+        return true;
+    }
+    if (e.kind == SessionLog::SWITCH_CARD) {
+        SessionLog::put_bytes(r.flow->progress->bytes, e.bytes);
+        r.flow->goto_transition(GameFlow::State::MENU);
+        return true;
+    }
+    return false;
+}
+
+std::string GameApp::_state_path() const { return user_dir_.empty() ? "" : gd::path_join(user_dir_, STATE_FILE); }
+
+void GameApp::_read_saved_state() {
+    std::string path = _state_path();
+    if (path.empty() || !gd::file_exists(path)) return;
+    gd::PBytes b = gd::read_file(path);
+    SessionLog saved;
+    if (saved.parse(SessionLog::bytes_of(b))) {
+        _saved = std::move(saved);
+        _has_saved = true;
+        Log::info("game: a save state of " + std::to_string(_saved.steps.size()) + " steps");
+    } else {
+        Log::warning("game: " + path + " is not a save state of this version");
+    }
+}
+
+// SAVE STATE: the log so far and the state's checksum, kept and written to the user folder.
+void GameApp::_save_state() {
+    _saved = _log;
+    _saved.check = SessionLog::checksum(*flow);
+    _has_saved = true;
+    std::string path = _state_path();
+    bool written = false;
+    if (!path.empty()) {
+        std::vector<uint8_t> data = _saved.serialize();
+        std::string temporary = path + ".tmp";
+        if (FILE* f = std::fopen(temporary.c_str(), "wb")) {
+            written = std::fwrite(data.data(), 1, data.size(), f) == data.size();
+            written = std::fclose(f) == 0 && written;
+        }
+        std::error_code ec;
+        if (written) std::filesystem::rename(temporary, path, ec);
+        written = written && !ec;
+    }
+    Log::info("game: state saved at step " + std::to_string(_saved.steps.size()) + (written ? "" : " (not written to a file)"));
+    _notice("STATE SAVED");
+}
+
+// LOAD STATE: a new flow from the save state's start, stepped through its log over the next frames
+// (_resimulate) while this one waits paused.
+void GameApp::_start_load() {
+    if (!_has_saved) {
+        _notice("NO SAVE STATE");
+        return;
+    }
+    _resim = std::make_unique<Resim>();
+    Resim& r = *_resim;
+    r.log = _saved;
+    r.fixes = r.log.fixes;
+    r.rules = RuleSet::original();
+    r.rules->set_gameplay_fixes(r.fixes);
+    r.flow = _make_flow(r.log.seed, r.rules, r.log.movies);
+    SessionLog::put_bytes(r.flow->progress->bytes, r.log.progress);
+    r.started = Platform::now();
+    _notice("LOADING STATE", 1 << 20);
+    Log::info("game: loading a state of " + std::to_string(r.log.steps.size()) + " steps");
+}
+
+// Steps the loading flow for up to `budget` seconds of this frame; when done, takes it.
+void GameApp::_resimulate(double budget) {
+    Resim& r = *_resim;
+    double until = Platform::now() + budget;
+    while (r.step < r.log.steps.size() && !r.failed && Platform::now() < until) {
+        for (int k = 0; k < RESIM_BATCH && r.step < r.log.steps.size() && !r.failed; ++k) {
+            // The app's changes between steps, then the step with its logged inputs.
+            while (r.event < r.log.events.size() && !r.log.events[r.event].inside && r.log.events[r.event].step == r.step) {
+                if (!_apply_change(r.log.events[r.event])) r.failed = true;
+                r.event += 1;
+            }
+            const SessionLog::Step& s = r.log.steps[r.step];
+            SessionLog::prepare(*r.flow, s);
+            r.flow->step(SessionLog::pads(s));
+            // Changes logged inside the step after its last callback.
+            while (r.event < r.log.events.size() && r.log.events[r.event].inside && r.log.events[r.event].step == r.step) {
+                if (!_apply_change(r.log.events[r.event])) r.failed = true;
+                r.event += 1;
+            }
+            if ((s.flags & SessionLog::SAVE_FAILED) != 0) r.flow->save_failed();
+            r.flow->fight->state_request = 0;
+            _note_music(*r.flow->sim->events);
+            r.step += 1;
+        }
+    }
+    if (!r.failed && r.step < r.log.steps.size()) return;
+    bool same = !r.failed && SessionLog::checksum(*r.flow) == r.log.check;
+    Log::info("game: state " + std::string(same ? "loaded" : "NOT loaded (the replay parted from the save)") + " after " +
+              std::to_string(r.step) + " steps in " + std::to_string(Platform::now() - r.started) + " s");
+    if (!same) {
+        _resim = nullptr;
+        _notice("LOAD FAILED");
+        return;
+    }
+    _take_loaded();
+}
+
+// The music events since the last track started (MUSIC, MUSIC_TRACK, MUSIC_STOP begin again).
+void GameApp::_note_music(const SimEvents& events) {
+    for (const gd::Ref<SimEvents::Event>& e : events.items) {
+        gd::Int k = e->kind;
+        if (k == SimEvents::Kind::MUSIC || k == SimEvents::Kind::MUSIC_TRACK || k == SimEvents::Kind::MUSIC_STOP) {
+            _resim->music.clear();
+        }
+        if (k == SimEvents::Kind::MUSIC || k == SimEvents::Kind::MUSIC_TRACK || k == SimEvents::Kind::MUSIC_STOP ||
+            k == SimEvents::Kind::MUSIC_PREPARE || k == SimEvents::Kind::MUSIC_VOLUME) {
+            _resim->music.push_back(gd::PI32{k, gd::Int(e->a), gd::Int(e->b)});
+        }
+    }
+}
+
+// The loaded flow in place of the running one: its log goes on from the save state's, the views
+// are made again for it, its music plays, and its pause menu closes (Escape, on the next step).
+void GameApp::_take_loaded() {
+    std::unique_ptr<Resim> r = std::move(_resim);
+    flow = r->flow;
+    rule_set = r->rules;
+    _fixes = r->fixes;
+    _log = r->log;
+    _log.check = 0;
+    _map_blocks();
+    _fight_loads = flow->sim->loads;
+    _fight_view_due = true;
+    _slots = gd::PI32{-1, -1};
+    _logged_state = -1;
+    vibration->clear();
+    movie.stop();
+    audio_director->stop_all();
+    gd::Ref<SimEvents> music = gd::make<SimEvents>();
+    for (const gd::PI32& m : r->music) music->add(m[0], -1, m[1], m[2]);
+    audio_director->handle(music);
+    flow->escape_pressed = true;
+    // The settings' rules now (the save state's were the ones it was made with).
+    if (Settings.flag("gameplay_fixes") != _fixes) _apply_rules();
+    _notice("STATE LOADED");
+}
+
+void GameApp::_notice(const std::string& text, gd::Int frames) {
+    pause_view.notice = text;
+    _notice_frames = frames;
 }
 
 // _apply_texts: the ending movies' captions in the texts' language.
@@ -511,6 +757,13 @@ void GameApp::frame(double now) {
     gd::Int due = ticks_due(now - _start_time);
     gd::Int ticks = 0;
     static gd::Int done = 0;
+    // Native: a save state loading: the paused game waits while the new flow steps (RESIM_BUDGET of
+    // each frame, so the frames keep coming); its notice stays for NOTICE_FRAMES after.
+    if (_resim) {
+        _resimulate(RESIM_BUDGET);
+        done = due;
+    }
+    if (_notice_frames > 0 && --_notice_frames == 0) pause_view.notice.clear();
     while (done < due && ticks < 4) {
         _physics_process();
         done += 1;
@@ -739,7 +992,16 @@ void GameApp::_step(const gd::PI32& step_pads) {
     bool in_options = flow->state == GameFlow::State::OPTIONS;
     // A trace replay keeps the recorded two controllers.
     if (!_replay) flow->sim->pads->connected = _second_input() ? 3 : 1;
+    // Native: the step's inputs into the session's log (save states), the pause menu's state items.
+    if (_logging) {
+        flow->fight->state_items = true;
+        _log.steps.push_back(SessionLog::capture(*flow, pads));
+    }
+    _stepping = true;
     flow->step(pads);
+    _stepping = false;
+    gd::Int state_request = flow->fight->state_request;
+    flow->fight->state_request = 0;
     // Leaving OPTIONS saves the options (ProgressCard): the game would keep them until its next
     // auto save.
     bool save = flow->save_requested || (in_options && flow->state != GameFlow::State::OPTIONS &&
@@ -778,7 +1040,10 @@ void GameApp::_step(const gd::PI32& step_pads) {
     }
     if (save && card->write(flow->progress->save_data()) != SaveStore::CARD_DONE) {
         flow->save_failed();
+        if (_logging && !_log.steps.empty()) _log.steps.back().flags |= SessionLog::SAVE_FAILED;
     }
+    if (_logging && state_request == PauseMenu::PAGE_SAVE_STATE) _save_state();
+    if (_logging && state_request == PauseMenu::PAGE_LOAD_STATE) _start_load();
     if (flow->movie_started >= 0 && _replay) {
         // The harness's movies end on their first frame.
         while (flow->movie_blocking) {

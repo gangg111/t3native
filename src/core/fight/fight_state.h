@@ -127,6 +127,10 @@ public:
     gd::Int pause_cursor = 0;                  // 0x80098DDC: the menu's item (−1: just opened)
     gd::Int pause_page = 0;                    // 0x80098DDD: the confirmed item + 1 (1 CANCEL, 3 RESET)
     gd::Int pause_delay = 0;                   // 0x800A8B3A: frames before the menu takes input
+    // Native: the pause menu's SAVE STATE and LOAD STATE (the app sets state_items before each step,
+    // never in a trace replay); the chosen one's page waits in state_request for the app.
+    bool state_items = false;
+    gd::Int state_request = 0;
     gd::PI32 command_cursor{0, 0};             // 0x800A39C0: per player the move list's first move
     gd::PI32 command_offset{0, 0};             // 0x800A39C4: per player the slide still to go (pixels)
     gd::Int replay_skip = 0;                   // 0x800958A4: Start skipped the replay

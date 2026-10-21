@@ -1,6 +1,9 @@
 // remake/presentation/hud/pause_menu_view.gd
 #include "presentation/hud/pause_menu_view.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "content/text_locale.h"
 #include "content/texture_packs.h"
 #include "core/fight/fight_simulation.h"
@@ -27,14 +30,15 @@ void PauseMenuView::show_state(const gd::Ref<FightSimulation>& sim) {
     gd::Ref<SimEvents::Event> menu = sim->events->first(SimEvents::Kind::PAUSE_MENU);
     player = menu != nullptr ? menu->a : 0;
     cursor = sim->fight->pause_cursor;
-    items = PauseMenu::item_count(sim->fight);
+    pages = PauseMenu::pages(sim->fight);
+    items = pages.size();
     blink = (sim->fight->vblank & 0x20) != 0;
     how_to = sim->fight->paused_player != 0 && sim->fight->pause_page == PauseMenu::PAGE_HOW_TO;
     if (how_to && _how_to_picture == nullptr) {
         std::string path = gd::path_join(assets_root, "stages/v/how_to.png");   // Assets.path(...)
         _how_to_picture = TexturePacks::texture(locale != nullptr ? locale->file_or("how_to.png", path) : path);
     }
-    visible = player != 0 || how_to;
+    visible = player != 0 || how_to || !notice.empty();
     // queue_redraw(): drawn every frame.
 }
 
@@ -52,19 +56,38 @@ void PauseMenuView::_draw() {
         _draw_how_to();
         return;
     }
+    // Native: the save states' notice, under the menu's box (or where the box would be).
+    if (!notice.empty()) {
+        gd::Int y = player != 0 ? ITEM_Y + items * ITEM_STEP + NOTICE_GAP : ITEM_Y;
+        gd::Int x = ITEM_CENTRE - ((static_cast<gd::Int>(notice.length()) * ITEM_ADVANCE) >> 1);
+        hud->draw_text_at(*target, notice, 0, SELECTED, x, y);
+    }
     if (player == 0) return;
-    float h = items < PauseMenu::ITEMS.size() ? BOX().size.y : static_cast<float>(BALL_BOX_HEIGHT);
-    target->draw_rect(hud->rect(BORDER().position.x, BORDER().position.y, BORDER().size.x, h + 4), BORDER_COLOUR());
-    target->draw_rect(hud->rect(BOX().position.x, BOX().position.y, BOX().size.x, h), BOX_COLOUR());
+    // The game's box holds three items (four in Tekken Ball: BALL_BOX_HEIGHT), ITEM_STEP each; native:
+    // as many as there are, as wide as the longest (centred where the game's is).
+    std::vector<std::string> labels;
+    gd::Int widest = 0;
     for (gd::Int i = 0; i < items; ++i) {
-        std::string text = PauseMenu::ITEMS[i];
-        if (locale != nullptr) text = locale->text("exe", text);
+        std::string text = PauseMenu::ITEMS[gd::clampi(gd::Int(pages[i]) - 1, 0, PauseMenu::ITEMS.size() - 1)];
+        if (locale != nullptr && gd::Int(pages[i]) <= PauseMenu::PAGE_HOW_TO) text = locale->text("exe", text);
+        widest = std::max(widest, static_cast<gd::Int>(text.length()) * ITEM_ADVANCE);
+        labels.push_back(text);
+    }
+    float h = BOX().size.y + static_cast<float>(std::max<gd::Int>(items - 3, 0) * ITEM_STEP);
+    float w = std::max(BOX().size.x, static_cast<float>(widest + BOX_MARGIN));
+    float x = static_cast<float>(ITEM_CENTRE) - w / 2.0f;
+    target->draw_rect(hud->rect(x - 1, BORDER().position.y, w + 2, h + 4), BORDER_COLOUR());
+    target->draw_rect(hud->rect(x, BOX().position.y, w, h), BOX_COLOUR());
+    for (gd::Int i = 0; i < items; ++i) {
+        const std::string& text = labels[static_cast<size_t>(i)];
         gd::Int x = ITEM_CENTRE - ((static_cast<gd::Int>(text.length()) * ITEM_ADVANCE) >> 1);
         hud->draw_text_at(*target, text, 0, i == cursor ? SELECTED : OTHER, x, ITEM_Y + i * ITEM_STEP);
     }
     if (blink) {
-        hud->draw_text_at(*target, gd::str(player) + "P PAUSE", 1, LABEL_COLOUR, player == 1 ? LABEL_LEFT : LABEL_RIGHT,
-                          LABEL_Y);
+        // A wider box moves "nP PAUSE" out by as much as the box grew on its side.
+        float out = (w - BOX().size.x) / 2.0f;
+        hud->draw_text_at(*target, gd::str(player) + "P PAUSE", 1, LABEL_COLOUR,
+                          player == 1 ? LABEL_LEFT - out : LABEL_RIGHT + out, LABEL_Y);
     }
 }
 

@@ -18,11 +18,14 @@ class SimEvents;
 
 class PauseMenu {
 public:
-    static inline const gd::Arr<std::string> ITEMS{"CANCEL", "COMMAND", "RESET", "HOW TO"};
+    // Each page's item (page - 1); native: SAVE STATE and LOAD STATE after the game's own.
+    static inline const gd::Arr<std::string> ITEMS{"CANCEL", "COMMAND", "RESET", "HOW TO", "SAVE STATE", "LOAD STATE"};
     static constexpr gd::Int PAGE_CANCEL = 1;
     static constexpr gd::Int PAGE_COMMAND = 2;
     static constexpr gd::Int PAGE_RESET = 3;
     static constexpr gd::Int PAGE_HOW_TO = 4;
+    static constexpr gd::Int PAGE_SAVE_STATE = 5;
+    static constexpr gd::Int PAGE_LOAD_STATE = 6;
     static constexpr gd::Int HOW_TO_DELAY = 3;
     static constexpr gd::Int OPENED = -1;                  // 0x80098DDC = 0xFF: the menu was just opened
     static constexpr gd::Int CONFIRM_DELAY = 2;
@@ -39,6 +42,8 @@ public:
 
     // The menu's items: HOW TO only in Tekken Ball.
     static gd::Int item_count(const gd::Ref<FightState>& fight);
+    // The page of each item in order (the game's: the item + 1; native: the state items after).
+    static gd::Arr<gd::Int> pages(const gd::Ref<FightState>& fight);
 
     // FUN_800B4088: the HOW TO picture until Start or a face button returns to the menu.
     static void _how_to(const gd::Ref<FightState>& fight, gd::Int player, const gd::Ref<FighterInput::PadWords>& pads,

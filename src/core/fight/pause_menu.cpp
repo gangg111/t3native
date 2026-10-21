@@ -49,14 +49,30 @@ void PauseMenu::step(const gd::Ref<FightState>& fight, gd::Int player, const gd:
     }
     if ((pressed & CONFIRM) != 0) {
         fight->pause_delay = CONFIRM_DELAY;
-        fight->pause_page = fight->pause_cursor + 1;
+        gd::Int page = pages(fight)[gd::clampi(fight->pause_cursor, 0, count - 1)];
+        if (page == PAGE_SAVE_STATE || page == PAGE_LOAD_STATE) {
+            // Native: the app saves or loads after this step; the menu stays.
+            fight->state_request = page;
+        } else {
+            fight->pause_page = page;
+        }
         events->add(SimEvents::Kind::SOUND, -1, SOUND_CONFIRM, 0);
     }
 }
 
 // The menu's items: HOW TO only in Tekken Ball.
 gd::Int PauseMenu::item_count(const gd::Ref<FightState>& fight) {
-    return fight->mode == GameMode::BALL ? ITEMS.size() : ITEMS.size() - 1;
+    return pages(fight).size();
+}
+
+gd::Arr<gd::Int> PauseMenu::pages(const gd::Ref<FightState>& fight) {
+    gd::Arr<gd::Int> out{PAGE_CANCEL, PAGE_COMMAND, PAGE_RESET};
+    if (fight->mode == GameMode::BALL) out.append(PAGE_HOW_TO);
+    if (fight->state_items) {
+        out.append(PAGE_SAVE_STATE);
+        out.append(PAGE_LOAD_STATE);
+    }
+    return out;
 }
 
 // FUN_800B4088: the HOW TO picture until Start or a face button returns to the menu.
