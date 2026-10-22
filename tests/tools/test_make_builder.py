@@ -59,7 +59,7 @@ def test_pack_round_trip_and_user_files_left_out(tmp_path, monkeypatch):
     (folder / "app/t3builder/x.py").write_bytes(b"print('x')\n" * 50)     # bytes: no CRLF translation
     (folder / "runtime").mkdir()
     (folder / "runtime/random.bin").write_bytes(bytes(range(256)) * 3)
-    for user in ("klucz/klucz.json", "praca/imported/a.png", "APK/Tekken3.apk", "ustawienia.json", "crash.log"):
+    for user in ("key/signing_key.json", "work/imported/a.png", "APK/Tekken3.apk", "settings.json", "crash.log"):
         (folder / user).parent.mkdir(parents=True, exist_ok=True)
         (folder / user).write_text("user's")
     (folder / make_builder.LAUNCHER).write_bytes(b"MZ folder launcher")

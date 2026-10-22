@@ -6,16 +6,18 @@
 // runs the window (app\kompilator.pyw) with the bundled pythonw.exe in a clean environment: PATH
 // is Windows' own folders only, so nothing installed on the computer (Python, FFmpeg, DLLs) is
 // reached. The signing key, the settings and the APKs stay next to this .exe (T3B_HOME); the
-// conversions in %LOCALAPPDATA%\Tekken3Builder\praca (T3B_WORK).
+// conversions in %LOCALAPPDATA%\Tekken3Builder\work (T3B_WORK). Its own words are English, or
+// Polish when the window's settings (settings.json next to the .exe) chose "lang": "pl".
 //
-//   "Kompilator Tekken 3.exe"                                   the window
-//   "Kompilator Tekken 3.exe" --build --jp X [--usa Y] [--arcade Z] --out DIR [--log FILE]
+//   "Tekken 3 Builder.exe"                                      the window
+//   "Tekken 3 Builder.exe" --build --jp X [--usa Y] [--arcade Z] --out DIR [--log FILE]
 //                                                               no window: the build, its exit code
 // Without an archive at its end (the developer's folder) it runs the folder next to it instead.
 #include <windows.h>
 #include <shlobj.h>
 #include <zlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -24,7 +26,20 @@
 namespace {
 
 const char MAGIC[8] = {'T', '3', 'B', 'P', 'A', 'K', '0', '1'};
-const wchar_t TITLE[] = L"Kompilator Tekken 3";
+enum Word { W_TITLE, W_UNPACKING, W_NO_FOLDER, W_NO_WRITE, W_DAMAGED, W_NO_READ, W_NOT_READY, W_NO_PYTHON, W_COUNT };
+
+const wchar_t* const WORDS[2][W_COUNT] = {
+    {L"Tekken 3 Builder", L"Preparing the builder: %d%%", L"cannot create the folder ", L"cannot write ",
+     L"a damaged file in the builder (download the builder again): ", L"Cannot read the builder's file.",
+     L"Could not prepare the builder: ", L"Cannot start "},
+    {L"Kompilator Tekken 3", L"Przygotowanie kompilatora: %d%%", L"nie mo\u017cna utworzy\u0107 folderu ",
+     L"nie mo\u017cna zapisa\u0107 ", L"uszkodzony plik w kompilatorze (pobierz kompilator ponownie): ",
+     L"Nie mo\u017cna odczyta\u0107 pliku kompilatora.", L"Nie uda\u0142o si\u0119 przygotowa\u0107 kompilatora: ",
+     L"Nie mo\u017cna uruchomi\u0107 "},
+};
+int g_language = 0;            // 0 English (the main language), 1 Polish
+
+const wchar_t* word(Word w) { return WORDS[g_language][w]; }
 
 struct Entry {
     std::wstring path;          // relative, backslashes
@@ -65,8 +80,23 @@ void report(const std::wstring& text) {
         DWORD written;
         if (out && out != INVALID_HANDLE_VALUE) WriteFile(out, line.data(), (DWORD)line.size(), &written, nullptr);
     } else {
-        MessageBoxW(nullptr, text.c_str(), TITLE, MB_ICONERROR);
+        MessageBoxW(nullptr, text.c_str(), word(W_TITLE), MB_ICONERROR);
     }
+}
+
+// Whether the window's settings next to the .exe chose Polish ("lang": "pl" in settings.json).
+bool settings_say_polish(const std::wstring& home) {
+    HANDLE f = CreateFileW((home + L"\\settings.json").c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    char buffer[8192];
+    DWORD got = 0;
+    ReadFile(f, buffer, sizeof buffer, &got, nullptr);
+    CloseHandle(f);
+    std::string text(buffer, got);
+    for (char& c : text) if (c == ' ' || c == '\t' || c == '\r' || c == '\n') c = '\x01';
+    text.erase(std::remove(text.begin(), text.end(), '\x01'), text.end());
+    return text.find("\"lang\":\"pl\"") != std::string::npos;
 }
 
 std::wstring module_path() {
@@ -165,7 +195,7 @@ struct Progress {
         wc.lpszClassName = L"T3BuilderUnpack";
         wc.hbrBackground = CreateSolidBrush(RGB(18, 18, 24));
         RegisterClassW(&wc);
-        window = CreateWindowExW(0, wc.lpszClassName, TITLE, WS_POPUP | WS_BORDER | WS_VISIBLE,
+        window = CreateWindowExW(0, wc.lpszClassName, word(W_TITLE), WS_POPUP | WS_BORDER | WS_VISIBLE,
                                  (GetSystemMetrics(SM_CXSCREEN) - 460) / 2, (GetSystemMetrics(SM_CYSCREEN) - 90) / 2,
                                  460, 90, nullptr, nullptr, wc.hInstance, nullptr);
         label = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 32, 440, 30, window,
@@ -177,7 +207,7 @@ struct Progress {
     void show(int percent) {
         if (!window) return;
         wchar_t text[96];
-        swprintf(text, 96, L"Przygotowanie kompilatora: %d%%", percent);
+        swprintf(text, 96, word(W_UNPACKING), percent);
         SetWindowTextW(label, text);
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
@@ -191,13 +221,13 @@ struct Progress {
 bool unpack_one(HANDLE in, const Entry& e, const std::wstring& root, std::wstring& error) {
     std::wstring dest = root + L"\\" + e.path;
     if (!make_dirs(parent(dest))) {
-        error = L"nie można utworzyć folderu " + parent(dest);
+        error = word(W_NO_FOLDER) + parent(dest);
         return false;
     }
     std::wstring part = dest + L".part";
     HANDLE out = CreateFileW(part.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
     if (out == INVALID_HANDLE_VALUE) {
-        error = L"nie można zapisać " + dest;
+        error = word(W_NO_WRITE) + dest;
         return false;
     }
     z_stream z = {};
@@ -239,11 +269,11 @@ bool unpack_one(HANDLE in, const Entry& e, const std::wstring& root, std::wstrin
     CloseHandle(out);
     if (!ok || written != e.size || crc != e.crc) {
         DeleteFileW(part.c_str());
-        error = L"uszkodzony plik w kompilatorze: " + e.path + L" (pobierz kompilator ponownie)";
+        error = word(W_DAMAGED) + e.path;
         return false;
     }
     if (!MoveFileExW(part.c_str(), dest.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        error = L"nie można zapisać " + dest;
+        error = word(W_NO_WRITE) + dest;
         return false;
     }
     return true;
@@ -260,7 +290,7 @@ bool ensure_unpacked(const Archive& a, const std::wstring& root) {
     DeleteFileW(marker.c_str());
     HANDLE in = CreateFileW(a.exe.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
     if (in == INVALID_HANDLE_VALUE) {
-        report(L"Nie można odczytać pliku kompilatora.");
+        report(word(W_NO_READ));
         return false;
     }
     Progress progress;
@@ -277,7 +307,7 @@ bool ensure_unpacked(const Archive& a, const std::wstring& root) {
     CloseHandle(in);
     progress.close();
     if (!ok) {
-        report(L"Nie udało się przygotować kompilatora: " + error);
+        report(word(W_NOT_READY) + error);
         return false;
     }
     HANDLE m = CreateFileW(marker.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
@@ -374,7 +404,7 @@ int run(const std::wstring& root, const std::wstring& home, const std::wstring& 
     }
     std::wstring cwd = root + L"\\app";
     if (!CreateProcessW(nullptr, &line[0], nullptr, nullptr, g_cli, flags, &env[0], cwd.c_str(), &si, &pi)) {
-        report(L"Nie można uruchomić " + python + L" (kod " + std::to_wstring(GetLastError()) + L").");
+        report(word(W_NO_PYTHON) + python + L" (" + std::to_wstring(GetLastError()) + L").");
         return 1;
     }
     DWORD code = 0;
@@ -400,17 +430,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
         }
     }
     std::wstring home = parent(module_path());
+    g_language = settings_say_polish(home) ? 1 : 0;
     Archive archive;
     std::wstring root, work;
     if (open_archive(archive)) {
         std::wstring base = local_app_data();
         root = base + L"\\app-" + archive.id;
-        work = base + L"\\praca";
+        work = base + L"\\work";
         if (!make_dirs(root) || !ensure_unpacked(archive, root)) return 1;
         remove_old_versions(base, L"app-" + archive.id);
     } else {
         root = home;                                   // the developer's folder
-        work = home + L"\\praca";
+        work = home + L"\\work";
     }
     int code = run(root, home, work, argc, argv);
     if (g_log != INVALID_HANDLE_VALUE) CloseHandle(g_log);

@@ -1,10 +1,10 @@
-"""Makes the one-file builder (build/builder/Kompilator Tekken 3.exe): everything a user needs to
+"""Makes the one-file builder (build/builder/Tekken 3 Builder.exe): everything a user needs to
 make the APK from their own discs, with nothing to install. First the folder
 (build/builder/Tekken3Builder), then the launcher (builder/launcher.cpp) with that folder appended
 as an archive, which it unpacks to %LOCALAPPDATA% and runs in a clean environment.
 
     Tekken3Builder/
-      Kompilator Tekken 3.exe       the launcher without an archive: runs the folder it lies in
+      Tekken 3 Builder.exe          the launcher without an archive: runs the folder it lies in
       app/                          t3builder (window, pipeline, signing) and kompilator.pyw
       runtime/python/               a CPython 3.12 copy with numpy, Pillow and xxhash
       runtime/ffmpeg/               ffmpeg.exe, ffprobe.exe
@@ -16,7 +16,7 @@ as an archive, which it unpacks to %LOCALAPPDATA% and runs in a clean environmen
 
 No game data goes in: the template's icon is a placeholder (the builder draws the real one from
 the user's disc), and the folder is checked for the converter's output marker before it is done.
-The key (klucz/) and the conversions (praca/) appear on the user's first build.
+The key (key/, next to the .exe) and the conversions (work/) appear on the user's first build.
 
     py tools/make_builder.py [--out build/builder/Tekken3Builder] [--template-only]
 """
@@ -49,7 +49,7 @@ LIB_SKIPPED = {"test", "idlelib", "site-packages", "ensurepip", "lib2to3", "turt
 T3_TOOLS = ("build_apk.py", "movies_from_disc.py", "font_sheets_from_disc.py", "arcade_overlay.py")
 REMAKE_DIRS = ("tools/remake_import", "tools/research")
 SKIPPED = shutil.ignore_patterns("__pycache__", ".pytest_cache", "tests", "*.pyc")
-LAUNCHER = "Kompilator Tekken 3.exe"
+LAUNCHER = "Tekken 3 Builder.exe"
 ONE_FILE = ROOT / "build/builder" / LAUNCHER       # the one-file builder, next to the folder
 # builder/ffmpeg_min.sh's install folder (MSYS2 home): FFmpeg 8.0.1, LGPL, shared.
 FFMPEG = Path(os.environ.get("T3_FFMPEG_MIN", f"C:/msys64/home/{Path.home().name}/t3ff/out/bin"))
@@ -57,8 +57,8 @@ FFMPEG = Path(os.environ.get("T3_FFMPEG_MIN", f"C:/msys64/home/{Path.home().name
 GPP = Path("C:/msys64/mingw64/bin/g++.exe")
 PACK_MAGIC = b"T3BPAK01"
 PACK_LEVEL = 9
-USER_DIRS = {"klucz", "praca", "APK"}
-USER_FILES = {"ustawienia.json", "crash.log"}
+USER_DIRS = {"key", "work", "APK"}
+USER_FILES = {"settings.json", "crash.log"}
 # Files whose presence means game data got in: the converter's marker and its outputs.
 FORBIDDEN = (".converter", "manifest.json", "texture_index.json")
 
@@ -184,7 +184,7 @@ def main() -> int:
     if args.template_only:
         return 0
     out = args.out
-    keep = {name: out / name for name in ("klucz", "praca") if (out / name).exists()}
+    keep = {name: out / name for name in ("key", "work") if (out / name).exists()}
     if keep:
         raise SystemExit(f"{out} holds a key or conversions ({', '.join(keep)}): move them away first")
     if out.exists():
@@ -202,7 +202,7 @@ def main() -> int:
     shutil.copy2(REMAKE / "remake/content/texts_en.json", out / "remake/remake/content/texts_en.json")
     shutil.copy2(REMAKE / "LICENSE.md", out / "remake/LICENSE.md")
     shutil.copy2(ROOT / "LICENSE.md", out / "LICENSE.md")
-    shutil.copy2(ROOT / "builder/CZYTAJ.txt", out / "CZYTAJ.txt")
+    shutil.copy2(ROOT / "builder/README.txt", out / "README.txt")
     python_runtime(out / "runtime/python")
     ffmpeg = ffmpeg_folder()
     (out / "runtime/ffmpeg").mkdir(parents=True)

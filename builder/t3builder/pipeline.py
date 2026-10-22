@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from t3builder import apk_sign
+from t3builder.texts import set_language, t
 
 log = logging.getLogger("t3builder")
 
@@ -41,7 +42,9 @@ ABIS = ("arm64-v8a", "x86_64")
 MOVIE_VARIANT = "small"                                   # the Android variant (build_apk skips .large)
 ICON_SIZE = 192                                           # mipmap-xxxhdpi
 APK_NAME = "Tekken3.apk"
+KEY_FILE = "key/signing_key.json"                       # next to the builder (HOME)
 PROGRESS = "@@"                                           # stdout lines the window reads as progress
+DONE = "done"                                             # the last one: "@@ done <minutes> <apk>"
 
 
 @dataclass
@@ -60,11 +63,11 @@ class Layout:
         root = APP_ROOT.parent
         if (root / "remake").is_dir():
             return Layout(root / "remake", root / "t3native/tools", root / "template", root / "runtime/ffmpeg",
-                          Path(os.environ.get("T3B_WORK", root / "praca")), HOME / "klucz/klucz.json")
+                          Path(os.environ.get("T3B_WORK", root / "work")), HOME / KEY_FILE)
         repo = APP_ROOT.parent                              # builder/ in the t3native checkout
         return Layout(Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake")), repo / "tools",
                       repo / "build/builder/template", None, repo / "build/builder/work",
-                      repo / "build/builder/work/klucz.json")
+                      repo / "build/builder/work/signing_key.json")
 
 
 def progress(step: int, total: int, text: str) -> None:
@@ -102,7 +105,7 @@ def run_converter(convert, argv: list[str]) -> None:
     finally:
         sys.argv = saved
     if code:
-        raise RuntimeError("konwersja płyty nie powiodła się (szczegóły w logu powyżej)")
+        raise RuntimeError(t("e_convert"))
 
 
 def make_icon(imported: Path) -> bytes:
@@ -144,10 +147,10 @@ def assemble(layout: Layout, imported: Path, out: Path, key: apk_sign.Key, icon:
         z.close()
         bad = apk_sign.check_alignment(unsigned)
         if bad:
-            raise RuntimeError(f"niewyrównane wpisy APK: {bad[:3]}")
+            raise RuntimeError(t("e_align", entries=bad[:3]))
         apk_sign.sign(unsigned, out, key)
     apk_sign.verify(out)
-    log.info("%d plików danych, APK %.1f MB", len(entries), out.stat().st_size / 1e6)
+    log.info(t("apk_done", files=len(entries), size=f"{out.stat().st_size / 1e6:.1f}"))
 
 
 def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout: Layout | None = None) -> Path:
@@ -166,40 +169,40 @@ def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout
     imported = layout.work / "imported"
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
-        raise RuntimeError("brak FFmpeg w folderze kompilatora")
+        raise RuntimeError(t("e_ffmpeg"))
 
     step += 1
-    progress(step, total, "Konwersja płyty PS1 (grafika, dźwięk, muzyka, filmy)")
+    progress(step, total, t("s_disc"))
     mpeg_movies(media, movies_from_disc)
     run_converter(convert, [*images, "--out", str(imported), "--ffmpeg", ffmpeg])
 
     if arcade:
         step += 1
-        progress(step, total, "Konwersja automatu (sceny i modele postaci)")
+        progress(step, total, t("s_arcade"))
         arcade_out = layout.work / "imported_arcade"
         run_converter(convert, ["--image", str(jp), "--arcade", str(arcade), "--no-music", "--no-movies",
                                 "--out", str(arcade_out)])
         done = arcade_overlay.overlay(imported, arcade_out)
         if not done["stages"]:
-            raise RuntimeError("zestaw automatu nie dał żadnej sceny")
-        log.info("automat: %d scen, %d modeli postaci", done["stages"], done["models"])
+            raise RuntimeError(t("e_arcade"))
+        log.info(t("arcade_done", stages=done["stages"], models=done["models"]))
 
     step += 1
-    progress(step, total, "Czcionki gry")
+    progress(step, total, t("s_fonts"))
     if font_sheets_from_disc.main(["--disc", str(jp), "--out", str(imported)]):
-        raise RuntimeError("czcionki: arkusze różnią się od konwertera")
+        raise RuntimeError(t("e_fonts"))
 
     step += 1
-    progress(step, total, "Klucz podpisu")
+    progress(step, total, t("s_key"))
     key, made = apk_sign.load_or_create(layout.key)
-    log.info("%s klucz podpisu: %s", "nowy" if made else "zapisany", layout.key)
+    log.info(t("key_new" if made else "key_kept", path=layout.key))
 
     step += 1
-    progress(step, total, "Składanie i podpisywanie APK")
+    progress(step, total, t("s_apk"))
     out_dir.mkdir(parents=True, exist_ok=True)
     apk = out_dir / APK_NAME
     assemble(layout, imported, apk, key, make_icon(imported))
-    progress(total, total, f"Gotowe w {(time.time() - start) / 60:.1f} min: {apk}")
+    print(f"{PROGRESS} {DONE} {(time.time() - start) / 60:.1f} {apk}", flush=True)
     return apk
 
 
@@ -210,11 +213,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--usa", type=Path, help="the USA disc image: the English texts")
     ap.add_argument("--arcade", type=Path, help="MAME's tekken3 ROM set (.zip)")
     ap.add_argument("--out", type=Path, required=True, help="the folder the APK is written to")
+    ap.add_argument("--lang", default="en", help="the language of the progress and the errors (en, pl)")
     args = ap.parse_args(argv)
+    set_language(args.lang)
     try:
         build(args.jp, args.usa, args.arcade, args.out)
     except Exception as e:  # noqa: BLE001  (the window shows the reason; the trace goes to the log)
-        log.exception("BŁĄD: %s", e)
+        log.exception(t("error", error=e))
         return 1
     return 0
 

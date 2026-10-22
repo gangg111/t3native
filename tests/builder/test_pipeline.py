@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "builder"))
-from t3builder import gui, pipeline  # noqa: E402
+from t3builder import gui, pipeline, texts  # noqa: E402
 
 
 def touch(path: Path, size: int = 1) -> Path:
@@ -42,15 +42,17 @@ def test_chd_is_refused_with_its_own_note(tmp_path):
     touch(tmp_path / "Tekken 3.chd", 5000)
     assert gui.find_image(tmp_path) is None
     assert gui.find_image(tmp_path / "Tekken 3.chd") is None
-    assert gui.missing_image_note(tmp_path) == gui.CHD_NOTE
-    assert gui.missing_image_note(tmp_path / "Tekken 3.chd") == gui.CHD_NOTE
-    assert gui.missing_image_note(tmp_path / "none") != gui.CHD_NOTE
+    assert gui.missing_image_note(tmp_path) == texts.t("chd")
+    assert gui.missing_image_note(tmp_path / "Tekken 3.chd") == texts.t("chd")
+    assert gui.missing_image_note(tmp_path / "none") != texts.t("chd")
 
 
 def test_progress_lines():
     # source: pipeline.progress writes "@@ <step> <total> <text>"
     assert gui.parse_progress("@@ 2 5 Czcionki gry\n") == (2, 5, "Czcionki gry")
     assert gui.parse_progress("music track 3: xa stream 2\n") is None
+    # source: pipeline.build prints "@@ done <minutes> <apk>" last
+    assert gui.parse_progress("@@ done 5.2 D:\\x y\\Tekken3.apk\n") == ("done", "5.2", "D:\\x y\\Tekken3.apk")
 
 
 def test_icon_entries():
