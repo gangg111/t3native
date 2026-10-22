@@ -97,7 +97,8 @@ void GameApp::_net_show_page() {
     switch (_net_page) {
         case NetPage::CHOICE:
             page = {"HOST GAME", "JOIN GAME"};
-            main_menu_view.footer = net::lan_available() ? "NETWORK MODE" : "TURN ON WI-FI";
+            // Wi-Fi Direct needs only the Wi-Fi turned on (its note says when it is not), no network.
+            main_menu_view.footer = net::lan_available() || Platform::direct_supported() ? "NETWORK MODE" : "TURN ON WI-FI";
             break;
         case NetPage::HOSTING: {
             page = {"WAITING FOR PLAYER 2", Platform::device_name()};
@@ -106,7 +107,7 @@ void GameApp::_net_show_page() {
             std::vector<net::Address> mine = net::local_addresses();
             std::string shown;
             for (size_t i = 0; i < mine.size() && i < 2; ++i) shown += (i ? "  " : "") + mine[i].text();
-            main_menu_view.footer = mine.empty() ? "TURN ON WI-FI" : shown;
+            main_menu_view.footer = mine.empty() ? (Platform::direct_supported() ? "WI-FI DIRECT" : "TURN ON WI-FI") : shown;
             main_menu_view.footer_colour = mine.empty() ? WHITE : GREEN;
             std::string note = Platform::direct_note();
             if (!note.empty()) {
@@ -165,7 +166,7 @@ void GameApp::_net_pages(double now) {
         _net_cursor = 0;
         _net_prev = held;
         // No local network: the system's Wi-Fi panel over the game (or Wi-Fi turned on).
-        if (!net::lan_available()) Platform::open_wifi_panel();
+        if (!net::lan_available() && !Platform::direct_supported()) Platform::open_wifi_panel();
     }
     gd::Int pressed = held & ~_net_prev;
     _net_prev = held;
@@ -234,7 +235,7 @@ void GameApp::_net_pages(double now) {
             if (back) {
                 flow->network_back = true;   // an input of the next step: the menu's list again
                 _net_page = NetPage::NONE;
-            } else if (ok && !net::lan_available()) {
+            } else if (ok && !net::lan_available() && !Platform::direct_supported()) {
                 Platform::open_wifi_panel();
                 acted = true;
             } else if (ok && _net_cursor == 0) {
