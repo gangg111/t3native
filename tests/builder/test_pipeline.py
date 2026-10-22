@@ -32,9 +32,19 @@ def test_no_image(tmp_path):
 
 
 def test_a_file_is_taken_as_is(tmp_path):
-    chd = touch(tmp_path / "t3.chd")
-    assert gui.find_image(chd) == chd
+    cue = touch(tmp_path / "t3.cue")
+    assert gui.find_image(cue) == cue
     assert gui.find_image(touch(tmp_path / "x.txt")) is None
+
+
+def test_chd_is_refused_with_its_own_note(tmp_path):
+    # source: disc_image._chd needs MAME's chdman, which the builder does not carry (decyzja usera 2026-10-22)
+    touch(tmp_path / "Tekken 3.chd", 5000)
+    assert gui.find_image(tmp_path) is None
+    assert gui.find_image(tmp_path / "Tekken 3.chd") is None
+    assert gui.missing_image_note(tmp_path) == gui.CHD_NOTE
+    assert gui.missing_image_note(tmp_path / "Tekken 3.chd") == gui.CHD_NOTE
+    assert gui.missing_image_note(tmp_path / "none") != gui.CHD_NOTE
 
 
 def test_progress_lines():

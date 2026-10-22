@@ -19,7 +19,9 @@ from tkinter import filedialog
 from t3builder import pipeline
 
 NO_WINDOW = 0x08000000                     # CREATE_NO_WINDOW: the child is a console program
-IMAGE_SUFFIXES = (".cue", ".chd", ".ecm", ".bin", ".iso")   # in order of preference
+IMAGE_SUFFIXES = (".cue", ".ecm", ".bin", ".iso")   # in order of preference
+# A CHD needs MAME's chdman (disc_image._chd), which the builder does not carry.
+CHD_NOTE = "Obrazy .chd nie są obsługiwane: rozpakuj je do .cue/.bin (chdman extractcd z pakietu MAME)."
 SETTINGS = pipeline.APP_ROOT.parent / "ustawienia.json"
 
 BG = "#121218"
@@ -34,19 +36,25 @@ FONT = "Bahnschrift"
 
 
 def find_image(folder: Path) -> Path | None:
-    """The disc image in a folder: a cue sheet first (it names its tracks), then a CHD, an ECM,
-    then the largest raw or ISO track."""
+    """The disc image in a folder: a cue sheet first (it names its tracks), then an ECM, then the
+    largest raw or ISO track."""
     if folder.is_file():
         return folder if folder.suffix.lower() in IMAGE_SUFFIXES else None
     if not folder.is_dir():
         return None
     files = [p for p in folder.iterdir() if p.is_file()]
-    for suffix in IMAGE_SUFFIXES[:3]:
+    for suffix in IMAGE_SUFFIXES[:2]:
         found = sorted(p for p in files if p.suffix.lower() == suffix)
         if found:
             return found[0]
-    tracks = [p for p in files if p.suffix.lower() in IMAGE_SUFFIXES[3:]]
+    tracks = [p for p in files if p.suffix.lower() in IMAGE_SUFFIXES[2:]]
     return max(tracks, key=lambda p: p.stat().st_size) if tracks else None
+
+
+def missing_image_note(path: Path) -> str:
+    """Why `path` gave no disc image: a CHD gets its own note."""
+    chd = path.suffix.lower() == ".chd" or (path.is_dir() and any(p.suffix.lower() == ".chd" for p in path.iterdir()))
+    return CHD_NOTE if chd else f"W {path} nie ma obrazu płyty (.cue z plikami .bin, .ecm albo .iso)."
 
 
 def parse_progress(line: str) -> tuple[int, int, str] | None:
@@ -130,7 +138,7 @@ class Window:
         panel = tk.Frame(root, bg=PANEL)
         panel.pack(fill="x", padx=22, pady=8)
         panel.columnconfigure(0, weight=1)
-        self.jp = Field(panel, 0, "Płyta PlayStation, wersja japońska", "folder z obrazem płyty (.cue, .chd, .bin)",
+        self.jp = Field(panel, 0, "Płyta PlayStation, wersja japońska", "folder z obrazem płyty (.cue z plikami .bin)",
                         self.pick_folder, False)
         self.usa = Field(panel, 2, "Płyta PlayStation, wersja USA", "angielskie teksty i listy ruchów",
                          self.pick_folder, True)
@@ -175,7 +183,7 @@ class Window:
             return ""
         image = find_image(Path(folder))
         if image is None:
-            self.say(f"W folderze {folder} nie ma obrazu płyty (.cue, .chd, .ecm, .bin, .iso).", ERROR)
+            self.say(missing_image_note(Path(folder)), ERROR)
             return ""
         return str(image)
 
@@ -223,11 +231,12 @@ class Window:
     def start(self) -> None:
         jp = find_image(Path(self.jp.value())) if self.jp.value() else None
         if jp is None:
-            self.say("Wskaż obraz japońskiej płyty PlayStation.", ERROR)
+            self.say(missing_image_note(Path(self.jp.value())) if self.jp.value()
+                     else "Wskaż obraz japońskiej płyty PlayStation.", ERROR)
             return
         usa = find_image(Path(self.usa.value())) if self.usa.value() else None
         if self.usa.value() and usa is None:
-            self.say("W polu płyty USA nie ma obrazu płyty.", ERROR)
+            self.say(missing_image_note(Path(self.usa.value())), ERROR)
             return
         arcade = Path(self.arcade.value()) if self.arcade.value() else None
         if arcade is not None and not arcade.is_file():

@@ -21,6 +21,7 @@ The key (klucz/) and the conversions (praca/) appear on the user's first build.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,8 @@ T3_TOOLS = ("build_apk.py", "movies_from_disc.py", "font_sheets_from_disc.py", "
 REMAKE_DIRS = ("tools/remake_import", "tools/research")
 SKIPPED = shutil.ignore_patterns("__pycache__", ".pytest_cache", "tests", "*.pyc")
 LAUNCHER = "Kompilator Tekken 3.exe"
+# builder/ffmpeg_min.sh's install folder (MSYS2 home): FFmpeg 8.0.1, LGPL, shared.
+FFMPEG = Path(os.environ.get("T3_FFMPEG_MIN", f"C:/msys64/home/{Path.home().name}/t3ff/out/bin"))
 GPP = Path("C:/mingw64/bin/g++.exe")
 WINDRES = Path("C:/mingw64/bin/windres.exe")
 # Files whose presence means game data got in: the converter's marker and its outputs.
@@ -51,11 +54,10 @@ FORBIDDEN = (".converter", "manifest.json", "texture_index.json")
 
 
 def ffmpeg_folder() -> Path:
-    """The real folder of the FFmpeg on the PATH (winget's Links holds only symbolic links)."""
-    found = shutil.which("ffmpeg")
-    if found is None:
-        raise SystemExit("ffmpeg is not on the PATH")
-    return Path(found).resolve().parent
+    """The minimal LGPL FFmpeg built by builder/ffmpeg_min.sh (programs, DLLs, licences)."""
+    if not (FFMPEG / "ffmpeg.exe").is_file():
+        raise SystemExit(f"no {FFMPEG / 'ffmpeg.exe'}: build it with builder/ffmpeg_min.sh in MSYS2")
+    return FFMPEG
 
 
 def placeholder_icon(path: Path) -> None:
@@ -149,8 +151,10 @@ def main() -> int:
     python_runtime(out / "runtime/python")
     ffmpeg = ffmpeg_folder()
     (out / "runtime/ffmpeg").mkdir(parents=True)
-    for name in ("ffmpeg.exe", "ffprobe.exe"):
-        shutil.copy2(ffmpeg / name, out / "runtime/ffmpeg" / name)
+    for path in ffmpeg.iterdir():
+        if path.suffix in (".exe", ".dll") and path.name != "ffplay.exe":
+            shutil.copy2(path, out / "runtime/ffmpeg" / path.name)
+    shutil.copytree(ffmpeg / "licenses", out / "runtime/ffmpeg/licenses")
     launcher(out)
     check_no_game_data(out)
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())

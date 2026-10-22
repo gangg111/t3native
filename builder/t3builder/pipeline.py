@@ -203,7 +203,7 @@ def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--jp", type=Path, required=True, help="the Japanese disc image (.cue, .chd, .bin, .iso)")
+    ap.add_argument("--jp", type=Path, required=True, help="the Japanese disc image (.cue, .ecm, .bin, .iso)")
     ap.add_argument("--usa", type=Path, help="the USA disc image: the English texts")
     ap.add_argument("--arcade", type=Path, help="MAME's tekken3 ROM set (.zip)")
     ap.add_argument("--out", type=Path, required=True, help="the folder the APK is written to")

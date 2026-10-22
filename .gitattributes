@@ -1,0 +1,2 @@
+# Shell scripts run in MSYS2's bash, which reads a CR as part of each line.
+*.sh text eol=lf

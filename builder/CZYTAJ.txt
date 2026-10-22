@@ -6,7 +6,8 @@ i niczego nie pobiera z internetu. Wszystko, co powstaje z płyty, zostaje na Tw
 Jak używać
 1. Uruchom "Kompilator Tekken 3.exe" z rozpakowanego folderu (nie przenoś samego pliku exe).
 2. Wskaż folder z obrazem japońskiej płyty PlayStation (Tekken 3 Japan Rev.1 albo pierwsze
-   wydanie japońskie): plik .cue z ścieżkami .bin, albo .chd.
+   wydanie japońskie): plik .cue ze ścieżkami .bin (zrzut Redump). Obrazów .chd kompilator
+   nie czyta: rozpakuj je najpierw do .cue/.bin (chdman extractcd z pakietu MAME).
 3. Opcjonalnie: folder z obrazem płyty USA (angielskie teksty i listy ruchów) oraz zestaw MAME
    automatu tekken3.zip (sceny i modele postaci z automatu, opcja VERSION: ARCADE).
 4. Kliknij ZBUDUJ APK. Pierwsza budowa trwa kilka minut. Gotowy Tekken3.apk trafia do
@@ -23,7 +24,9 @@ Gotowy plik APK zawiera dane z Twojej płyty: jest tylko do Twojego prywatnego u
 nie udostępniaj go nikomu.
 
 Licencja: kod portu pochodzi z projektu Tekken3Remake (PolyForm Noncommercial 1.0.0,
-LICENSE.md), wyłącznie do użytku niekomercyjnego. Tekken jest znakiem towarowym
+LICENSE.md), wyłącznie do użytku niekomercyjnego. FFmpeg w runtime\ffmpeg to FFmpeg 8.0.1
+na licencji LGPL 2.1 (zbudowany bez części GPL; źródła: ffmpeg.org, licencje bibliotek
+w runtime\ffmpeg\licenses). Tekken jest znakiem towarowym
 Bandai Namco Entertainment; projekt nie jest z nią związany.
 
 
@@ -33,7 +36,8 @@ The builder makes the game's APK from your own Tekken 3 disc. It holds no game d
 downloads nothing; everything made from the disc stays on your computer.
 
 1. Run "Kompilator Tekken 3.exe" from the unpacked folder.
-2. Pick the folder of the Japanese PlayStation disc image (.cue with its .bin tracks, or .chd).
+2. Pick the folder of the Japanese PlayStation disc image (.cue with its .bin tracks; a .chd must
+   be extracted to .cue/.bin first with MAME's chdman extractcd).
 3. Optionally the USA disc (English texts) and MAME's arcade set tekken3.zip (arcade stages and
    models).
 4. Click ZBUDUJ APK (build). Tekken3.apk is written to the chosen folder.
