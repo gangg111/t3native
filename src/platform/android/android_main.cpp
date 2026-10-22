@@ -121,6 +121,20 @@ bool egl_attach(ANativeWindow* window) {
     return true;
 }
 
+// Whether the surface's size changed since g_width x g_height (which it then takes). EGL gives a
+// window's new size only from the next swap on: a size read when the window changed (the first
+// start's rotation to landscape, the system's full-screen notice) can be the old one (1x1, or
+// portrait), and no command follows the swap that brings the new one. Checked after every frame.
+bool surface_resized() {
+    EGLint w = 0, h = 0;
+    eglQuerySurface(g_display, g_surface, EGL_WIDTH, &w);
+    eglQuerySurface(g_display, g_surface, EGL_HEIGHT, &h);
+    if (w == g_width && h == g_height) return false;
+    g_width = w;
+    g_height = h;
+    return true;
+}
+
 void egl_detach() {
     if (g_surface != EGL_NO_SURFACE) {
         eglMakeCurrent(g_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -624,6 +638,9 @@ void android_main(android_app* app) {
                 eglDestroyContext(g_display, g_context);
                 g_context = EGL_NO_CONTEXT;
                 if (app->window) egl_attach(app->window);
+            } else if (surface_resized()) {
+                Log::info("android: surface " + std::to_string(g_width) + "x" + std::to_string(g_height));
+                g_app->resize(g_width, g_height, safe_area(app));
             }
         }
     }
