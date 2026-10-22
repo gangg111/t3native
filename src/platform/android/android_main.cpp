@@ -511,12 +511,12 @@ jmethodID activity_method(JNIEnv* env, const char* name, const char* sig) {
 }
 }  // namespace
 
-bool ask_text(const std::string& title, const std::string& initial) {
+bool ask_text(const std::string& title, const std::string& initial, TextKind kind) {
     JNIEnv* env = g_android ? game_thread_env() : nullptr;
-    jmethodID m = env ? activity_method(env, "askText", "(Ljava/lang/String;Ljava/lang/String;)V") : nullptr;
+    jmethodID m = env ? activity_method(env, "askText", "(Ljava/lang/String;Ljava/lang/String;Z)V") : nullptr;
     if (!m) return false;
     jstring t = env->NewStringUTF(title.c_str()), s = env->NewStringUTF(initial.c_str());
-    env->CallVoidMethod(g_android->activity->clazz, m, t, s);
+    env->CallVoidMethod(g_android->activity->clazz, m, t, s, static_cast<jboolean>(kind == TEXT_ADDRESS));
     env->DeleteLocalRef(t);
     env->DeleteLocalRef(s);
     if (env->ExceptionCheck()) {

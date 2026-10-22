@@ -56,12 +56,29 @@ std::string Address::text(bool with_port) const {
 }
 
 bool Address::parse(const std::string& s, uint16_t port, Address& out) {
-    unsigned a = 0, b = 0, c = 0, d = 0;
-    char tail = 0;
-    if (std::sscanf(s.c_str(), "%u.%u.%u.%u%c", &a, &b, &c, &d, &tail) != 4) return false;
-    if (a > 255 || b > 255 || c > 255 || d > 255) return false;
-    out.ip = (a << 24) | (b << 16) | (c << 8) | d;
-    out.port = port;
+    // Four numbers of 1 to 3 digits (0 ... 255), then optionally ':' and 1 to 5 digits (1 ... 65535).
+    uint32_t parts[5] = {};
+    int part = 0, digits = 0;
+    for (char ch : s) {
+        if (ch == ' ') continue;
+        if (ch == ',') ch = '.';
+        if (ch >= '0' && ch <= '9') {
+            if (++digits > (part == 4 ? 5 : 3)) return false;
+            parts[part] = parts[part] * 10 + static_cast<uint32_t>(ch - '0');
+        } else if ((ch == '.' && part < 3) || (ch == ':' && part == 3)) {
+            if (digits == 0) return false;
+            ++part;
+            digits = 0;
+        } else {
+            return false;
+        }
+    }
+    if (digits == 0 || part < 3) return false;
+    for (int i = 0; i < 4; ++i)
+        if (parts[i] > 255) return false;
+    if (part == 4 && (parts[4] == 0 || parts[4] > 65535)) return false;
+    out.ip = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
+    out.port = part == 4 ? static_cast<uint16_t>(parts[4]) : port;
     return out.ip != 0;
 }
 

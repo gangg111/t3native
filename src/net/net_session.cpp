@@ -68,9 +68,16 @@ bool NetSession::host(const Identity& me, const Start& start, double now) {
     host_ = true;
     reason_ = Reason::NONE;
     if (!socket_.open(PORT)) {
+        Log::error("net: cannot host: UDP port " + std::to_string(PORT) + " is taken");
         _end(Reason::NO_PORT);
         return false;
     }
+    {
+        std::string mine;
+        for (const Address& a : local_addresses()) mine += " " + a.text();
+        Log::info("net: hosting on UDP " + std::to_string(PORT) + ", addresses:" + (mine.empty() ? " none" : mine));
+    }
+    logged_.clear();
     // A session number the stray packets of an earlier session do not carry.
     session_ = static_cast<uint32_t>(static_cast<uint64_t>(now * 1e6)) | 1u;
     heard_ = now;
@@ -84,9 +91,16 @@ bool NetSession::search(const Identity& me, double now) {
     host_ = false;
     reason_ = Reason::NONE;
     if (!socket_.open(0)) {
+        Log::error("net: cannot search: no UDP socket");
         _end(Reason::NO_PORT);
         return false;
     }
+    {
+        std::string targets;
+        for (const Address& a : broadcast_targets(PORT)) targets += " " + a.text();
+        Log::info("net: searching from UDP " + std::to_string(socket_.port()) + ", DISCOVER to" + targets);
+    }
+    logged_.clear();
     offers_.clear();
     last_search_ = -1;
     heard_ = now;
@@ -101,6 +115,7 @@ void NetSession::join(const Address& host, const GuestProgress& mine, double now
     heard_ = now;
     last_welcome_ = -1;
     phase_ = Phase::JOINING;
+    Log::info("net: joining " + host.text(true));
 }
 
 void NetSession::close(Reason why) {
@@ -174,7 +189,11 @@ void NetSession::poll(double now) {
                 put64(body, mine_.costumes);
                 _send(JOIN, body, peer_);
             }
-            if (now - heard_ > TIMEOUT) _end(Reason::TIMEOUT);
+            if (now - heard_ > TIMEOUT) {
+                Log::error("net: no answer from " + peer_.text(true) + " in " + std::to_string(int(TIMEOUT)) +
+                           " s (a wrong address, another network, or the network keeps devices apart)");
+                _end(Reason::TIMEOUT);
+            }
             break;
         case Phase::PLAYING:
             if (host_) {
@@ -221,6 +240,7 @@ void NetSession::_receive(const Address& from, const std::vector<uint8_t>& packe
     switch (type) {
         case DISCOVER:
             if (host_ && phase_ == Phase::HOSTING) {
+                if (once("discover", from)) Log::info("net: search from " + from.text(true) + ", OFFER sent");
                 std::vector<uint8_t> body;
                 put_text(body, me_.name);
                 _send(OFFER, body, from);
@@ -231,7 +251,10 @@ void NetSession::_receive(const Address& from, const std::vector<uint8_t>& packe
                 std::string name = r.text();
                 if (!r.ok) return;
                 auto it = std::find_if(offers_.begin(), offers_.end(), [&](const Offer& o) { return o.id == session; });
-                if (it == offers_.end()) offers_.push_back(Offer{from, name, now, session});
+                if (it == offers_.end()) {
+                    offers_.push_back(Offer{from, name, now, session});
+                    if (once("offer", from)) Log::info("net: game " + name + " at " + from.text(true));
+                }
                 else it->name = name, it->seen = now;
             }
             break;
@@ -251,6 +274,12 @@ void NetSession::_receive(const Address& from, const std::vector<uint8_t>& packe
             }
             if (phase_ != Phase::HOSTING && phase_ != Phase::PLAYING) return;
             Reason refuse = build != me_.build ? Reason::VERSION : (data != me_.data ? Reason::DATA : Reason::NONE);
+            if (once("join", from)) {
+                Log::info("net: JOIN from " + name + " at " + from.text(true) +
+                          (refuse == Reason::VERSION ? ": refused, another build (" + build + ", this one " + me_.build + ")"
+                           : refuse == Reason::DATA  ? ": refused, other game data"
+                                                     : ": welcome"));
+            }
             if (refuse != Reason::NONE) {
                 std::vector<uint8_t> body{static_cast<uint8_t>(refuse)};
                 _send(REJECT, body, from);
@@ -294,11 +323,13 @@ void NetSession::_receive(const Address& from, const std::vector<uint8_t>& packe
                 session_ = session;
                 heard_ = now;
                 phase_ = Phase::PLAYING;
+                Log::info("net: WELCOME from " + name + " at " + from.text(true));
             }
             break;
         case REJECT:
             if (!host_ && from == peer_ && phase_ == Phase::JOINING) {
                 uint8_t why = r.u8();
+                Log::info("net: REJECT from " + from.text(true) + " (reason " + std::to_string(int(why)) + ")");
                 _end(r.ok ? static_cast<Reason>(why) : Reason::LEFT);
             }
             break;
@@ -358,6 +389,13 @@ void NetSession::_receive(const Address& from, const std::vector<uint8_t>& packe
         default:
             break;
     }
+}
+
+bool NetSession::once(const char* what, const Address& from) {
+    std::string key = std::string(what) + " " + from.text(true);
+    if (logged_.count(key)) return false;
+    logged_.insert(key);
+    return true;
 }
 
 void NetSession::send_pad(uint32_t step, uint32_t pad) {

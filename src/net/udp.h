@@ -17,7 +17,9 @@ struct Address {
     bool valid() const { return ip != 0 && port != 0; }
     // "192.168.1.23" (and ":port" with `with_port`).
     std::string text(bool with_port = false) const;
-    // A dotted address ("192.168.1.23"); false when it is not one.
+    // A dotted address ("192.168.1.23", with `port`) or one with its own port ("192.168.1.23:27030");
+    // spaces are skipped and a comma reads as a dot (some keyboards' number rows). False when it is
+    // not one.
     static bool parse(const std::string& s, uint16_t port, Address& out);
     static Address loopback(uint16_t port) { return Address{0x7F000001u, port}; }
 };

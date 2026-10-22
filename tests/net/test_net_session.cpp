@@ -126,3 +126,52 @@ T3_TEST(net_session, silence_ends_the_session) {
     t.expect(host.reason() == NetSession::Reason::TIMEOUT, "timed out");
     t.expect(now - quiet >= 15.0 && now - quiet < 15.5, "after 15 s");
 }
+
+// A typed host address (the ENTER ADDRESS dialog): the values worked out by hand.
+T3_TEST(net_session, typed_addresses) {
+    struct Case {
+        const char* text;
+        bool ok;
+        uint32_t ip;
+        uint16_t port;
+    };
+    const Case cases[] = {
+        {"192.168.1.20", true, 0xC0A80114u, NetSession::PORT},           // 192<<24 | 168<<16 | 1<<8 | 20
+        {"255.255.255.254:65535", true, 0xFFFFFFFEu, 65535},              // the longest: 21 characters
+        {"10.0.0.7:27031", true, 0x0A000007u, 27031},
+        {" 192,168,1,20 ", true, 0xC0A80114u, NetSession::PORT},          // spaces skipped, commas as dots
+        {"192.168.1", false, 0, 0},
+        {"192.168.1.256", false, 0, 0},
+        {"192.168.1.2000", false, 0, 0},
+        {"192.168..20", false, 0, 0},
+        {"192.168.1.20:", false, 0, 0},
+        {"192.168.1.20:0", false, 0, 0},
+        {"192.168.1.20:65536", false, 0, 0},
+        {"+192.168.1.20", false, 0, 0},
+        {"0.0.0.0", false, 0, 0},
+        {"", false, 0, 0},
+    };
+    for (const Case& c : cases) {
+        Address a;
+        bool ok = Address::parse(c.text, NetSession::PORT, a);
+        t.expect(ok == c.ok, std::string("parse \"") + c.text + "\"");
+        if (ok && c.ok) t.expect(a.ip == c.ip && a.port == c.port, std::string("value of \"") + c.text + "\"");
+    }
+}
+
+// Joining by a typed address with its port, without the broadcast search finding the host (a
+// network that keeps broadcasts from other devices): the same session as through an offer.
+T3_TEST(net_session, join_by_typed_address) {
+    NetSession host, guest;
+    double now = 0;
+    if (!t.expect(host.host(identity("b1", "HOST"), NetSession::Start{}, now), "host on the port")) return;
+    guest.search(identity("b1", "GUEST"), now);
+    Address typed;
+    if (!t.expect(Address::parse("127.0.0.1:" + std::to_string(NetSession::PORT), 1, typed), "the address")) return;
+    guest.join(typed, NetSession::GuestProgress{}, now);
+    t.expect(run(host, guest, now, 2.0,
+                 [&] { return host.phase() == NetSession::Phase::PLAYING && guest.phase() == NetSession::Phase::PLAYING; }),
+             "both playing");
+    guest.close();
+    host.close();
+}

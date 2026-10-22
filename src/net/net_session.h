@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,8 @@ private:
     void _send(Type type, const std::vector<uint8_t>& body, const Address& to);
     void _receive(const Address& from, const std::vector<uint8_t>& packet, double now);
     void _end(Reason why);
+    // Whether `what` from `from` is new to the log (each step of a connection is logged once).
+    bool once(const char* what, const Address& from);
 
     UdpSocket socket_;
     Phase phase_ = Phase::IDLE;
@@ -130,6 +133,7 @@ private:
     std::vector<uint8_t> received_;
     uint64_t received_end_ = 0;
     std::map<uint64_t, std::vector<uint8_t>> ahead_;
+    std::set<std::string> logged_;
 };
 
 }  // namespace t3::net

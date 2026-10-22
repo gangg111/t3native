@@ -24,7 +24,7 @@ void pad_rumble(int device, int weak, int strong, int milliseconds) {
     g_pad_pulses.push_back({device, weak, strong, milliseconds});
 }
 double now() { return 0.0; }
-bool ask_text(const std::string&, const std::string&) { return false; }
+bool ask_text(const std::string&, const std::string&, TextKind) { return false; }
 TextAnswer poll_text(std::string&) { return TEXT_NONE; }
 }  // namespace t3::Platform
 

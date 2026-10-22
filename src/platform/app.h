@@ -58,9 +58,12 @@ void perf_line(const std::string& line);
 double now();
 // A line of text typed by the player (Android: a dialog with the system keyboard), asked with the
 // text so far; false when there is no text input. The answer arrives later through `poll_text`:
-// TEXT_NONE while waiting, TEXT_ENTERED with `text`, TEXT_CANCELLED.
+// TEXT_NONE while waiting, TEXT_ENTERED with `text`, TEXT_CANCELLED. TEXT_NAME: a touch button's
+// name (12 characters); TEXT_ADDRESS: a host's IPv4 address with an optional port ("192.168.1.20",
+// "192.168.1.20:27030", 21 characters), typed on a keyboard with the dot.
 enum TextAnswer { TEXT_NONE, TEXT_ENTERED, TEXT_CANCELLED };
-bool ask_text(const std::string& title, const std::string& initial);
+enum TextKind { TEXT_NAME, TEXT_ADDRESS };
+bool ask_text(const std::string& title, const std::string& initial, TextKind kind = TEXT_NAME);
 TextAnswer poll_text(std::string& text);
 // Native: NETWORK MODE. The device's name as the other player sees it ("GALAXY Z FOLD7"); whether
 // the Wi-Fi lets broadcasts in (Android drops them unless the app holds a multicast lock: a host

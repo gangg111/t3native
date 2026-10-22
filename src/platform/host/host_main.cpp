@@ -300,8 +300,9 @@ double now() { return std::chrono::duration<double>(std::chrono::steady_clock::n
 namespace {
 bool g_text_asked = false;
 }
-bool ask_text(const std::string& title, const std::string& initial) {
-    Log::info("ask_text " + title + " (" + initial + ")" + (g_options.text_answer.empty() ? ": no --text-answer" : ""));
+bool ask_text(const std::string& title, const std::string& initial, TextKind kind) {
+    Log::info("ask_text " + title + " (" + initial + ")" + (kind == TEXT_ADDRESS ? " address" : "") +
+              (g_options.text_answer.empty() ? ": no --text-answer" : ""));
     g_text_asked = !g_options.text_answer.empty();
     return g_text_asked;
 }

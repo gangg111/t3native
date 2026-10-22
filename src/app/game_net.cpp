@@ -102,8 +102,11 @@ void GameApp::_net_show_page() {
         case NetPage::HOSTING: {
             page = {"WAITING FOR PLAYER 2", Platform::device_name()};
             main_menu_view.page_cursor = 0;
+            // Every address player 2 may type (Wi-Fi and a hotspot of this phone at once: two).
             std::vector<net::Address> mine = net::local_addresses();
-            main_menu_view.footer = mine.empty() ? "TURN ON WI-FI" : mine[0].text();
+            std::string shown;
+            for (size_t i = 0; i < mine.size() && i < 2; ++i) shown += (i ? "  " : "") + mine[i].text();
+            main_menu_view.footer = mine.empty() ? "TURN ON WI-FI" : shown;
             main_menu_view.footer_colour = mine.empty() ? WHITE : GREEN;
             break;
         }
@@ -256,7 +259,7 @@ void GameApp::_net_pages(double now) {
                 _net_page = NetPage::CHOICE;
                 _net_cursor = 1;
             } else if (ok && _net_cursor == items - 1) {
-                if (Platform::ask_text("HOST ADDRESS", "")) _net_asking = acted = true;
+                if (Platform::ask_text("HOST ADDRESS", "", Platform::TEXT_ADDRESS)) _net_asking = acted = true;
             } else if (ok && _net_cursor < offers) {
                 _net.join(_net.offers()[static_cast<size_t>(_net_cursor)].address, mine(), now);
                 _net_page = NetPage::CONNECTING;

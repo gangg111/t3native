@@ -26,11 +26,13 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.text.InputFilter;
+import android.text.InputType;
 import android.view.InputDevice;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 
 /**
@@ -38,11 +40,15 @@ import android.widget.EditText;
  * bars hidden while it is in front, as a full-screen game shows them only on a swipe from the edge.
  * Hiding them needs the UI thread, which the native code does not run on.
  *
- * It also asks for a line of text (a touch button's name): a dialog with the system keyboard. The
+ * It also asks for a line of text (a touch button's name, a host's address): a dialog with the system keyboard. The
  * game thread calls askText and then pollText each frame until the answer is there.
  */
 public class GameActivity extends NativeActivity {
     private static final int MAX_TEXT = 12;
+    // A host's address: "255.255.255.255:65535" at most, digits, dots and the port's colon (a comma,
+    // which some keyboards' number rows put where the dot is, is read as a dot by the game).
+    private static final int MAX_ADDRESS = 21;
+    private static final String ADDRESS_CHARS = "0123456789.,:";
     private String textAnswer;   // "1" + the text (OK) or "0" (Cancel); null while none
 
     @Override
@@ -75,15 +81,29 @@ public class GameActivity extends NativeActivity {
         }
     }
 
-    /** Called from the game thread: shows the dialog on the UI thread. */
-    public void askText(final String title, final String initial) {
+    /** Called from the game thread: shows the dialog on the UI thread (`address`: a host's address). */
+    public void askText(final String title, final String initial, final boolean address) {
         synchronized (this) {
             textAnswer = null;
         }
         runOnUiThread(() -> {
             final EditText edit = new EditText(this);
             edit.setSingleLine(true);
-            edit.setFilters(new InputFilter[] {new InputFilter.LengthFilter(MAX_TEXT)});
+            if (address) {
+                // The URI keyboard has the dot on its first page; only the address's characters stay.
+                edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+                InputFilter only = (source, start, end, dest, dstart, dend) -> {
+                    StringBuilder kept = new StringBuilder();
+                    for (int i = start; i < end; i++) {
+                        if (ADDRESS_CHARS.indexOf(source.charAt(i)) >= 0) kept.append(source.charAt(i));
+                    }
+                    return kept.length() == end - start ? null : kept;
+                };
+                edit.setFilters(new InputFilter[] {new InputFilter.LengthFilter(MAX_ADDRESS), only});
+                edit.setHint("192.168.1.20");
+            } else {
+                edit.setFilters(new InputFilter[] {new InputFilter.LengthFilter(MAX_TEXT)});
+            }
             edit.setText(initial);
             edit.setSelection(edit.getText().length());
             final boolean[] answered = {false};
@@ -99,6 +119,16 @@ public class GameActivity extends NativeActivity {
             dialog.setOnDismissListener(d -> {
                 if (!answered[0]) answer("0");
                 hideSystemBars();
+            });
+            // The keyboard's Done key is OK too, and in landscape the field stays in the dialog above the
+            // keyboard (no full-screen editor whose Done only hides the keyboard).
+            edit.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+            edit.setOnEditorActionListener((v, action, event) -> {
+                if (action != EditorInfo.IME_ACTION_DONE) return false;
+                answered[0] = true;
+                answer("1" + edit.getText().toString());
+                dialog.dismiss();
+                return true;
             });
             dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
             dialog.show();
