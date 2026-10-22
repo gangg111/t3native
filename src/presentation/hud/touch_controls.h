@@ -54,6 +54,12 @@ public:
     static constexpr float MIN_UNIT = 28.0f;
     static constexpr float DEAD_ZONE = 0.35f;        // of the unit
     static constexpr float STICK_RADIUS = 1.3f;      // units
+    // The D-pad's arms (the user's drawing, 2026-10-22: reach 750 px, arm 500 wide, straight sides to
+    // 380 from the middle, the point at 130, the outline about 70 thick), as shares of the reach.
+    static constexpr float DPAD_ARM = 500.0f / 750.0f;
+    static constexpr float DPAD_SHOULDER = 380.0f / 750.0f;
+    static constexpr float DPAD_TIP = 130.0f / 750.0f;
+    static constexpr float DPAD_LINE = 70.0f / 750.0f;
     static constexpr float BUTTON_RADIUS = 0.78f;
     static constexpr float BUTTON_SPREAD = 1.35f;
     static constexpr float HIT_SLACK = 1.25f;        // a round button takes touches this far out (of its radius)

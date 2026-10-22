@@ -54,6 +54,28 @@ float clamp_scale(float s) { return std::clamp(s, TouchControls::MIN_SCALE, Touc
 
 }  // namespace
 
+// A convex polygon moved in by `by` on every edge (mitred corners): each vertex goes along the sum of
+// its two edges' inward normals, by / (1 + n1·n2) of it, where both moved edges meet.
+static std::vector<gfx::Vec2> inset(const std::vector<gfx::Vec2>& points, float by) {
+    size_t n = points.size();
+    gfx::Vec2 middle(0, 0);
+    for (const gfx::Vec2& p : points) middle = middle + p;
+    middle = middle * (1.0f / static_cast<float>(n));
+    auto inward = [&](gfx::Vec2 a, gfx::Vec2 b) {
+        gfx::Vec2 e = b - a;
+        gfx::Vec2 normal = gfx::Vec2(-e.y, e.x) * (1.0f / length(e));
+        gfx::Vec2 to_middle = middle - (a + b) * 0.5f;
+        return normal.x * to_middle.x + normal.y * to_middle.y < 0.0f ? normal * -1.0f : normal;
+    };
+    std::vector<gfx::Vec2> out(n);
+    for (size_t i = 0; i < n; ++i) {
+        gfx::Vec2 n1 = inward(points[(i + n - 1) % n], points[i]), n2 = inward(points[i], points[(i + 1) % n]);
+        float k = by / (1.0f + n1.x * n2.x + n1.y * n2.y);
+        out[i] = points[i] + (n1 + n2) * k;
+    }
+    return out;
+}
+
 const gd::Arr<gd::Int> TouchControls::FACE{PadState::TRIANGLE, PadState::SQUARE, PadState::CIRCLE, PadState::CROSS};
 const gd::Arr<gfx::Vec2> TouchControls::FACE_OFFSETS{gfx::Vec2(0, -1), gfx::Vec2(-1, 0), gfx::Vec2(1, 0), gfx::Vec2(0, 1)};
 const gd::Dict<std::string, gd::Arr<gd::Int>> TouchControls::MACRO_SETS = [] {
@@ -470,33 +492,31 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
     float pressed_alpha = std::min(1.0f, rest + (PRESSED_ALPHA - ALPHA));
     float share = rest / ALPHA;
     if (dpad && _stick_zone.has_area()) {
-        // The D-pad: a cross at the stick's rest, the arm (or the two arms) pointed at lit.
+        // The D-pad: four arms at the stick's rest, each a pentagon pointing at the middle (a square
+        // end out, a point in), the arm (or the two arms) pointed at lit. Proportions of the reach:
+        // DPAD_ARM wide, the sides straight to DPAD_SHOULDER from the middle, the point at DPAD_TIP;
+        // the outline DPAD_LINE thick with round corners.
         float reach = stick;
-        float arm = 0.62f * reach;
+        float half = DPAD_ARM * reach / 2.0f, shoulder = DPAD_SHOULDER * reach, tip = DPAD_TIP * reach;
+        float line = std::max(2.0f, DPAD_LINE * reach);
         gd::Int held = is_inf(_stick_origin) ? 0 : stick_bits(_stick_at - _stick_origin);
         gfx::Vec2 c = _stick_hint;
-        gfx::Rect2 vertical(c - gfx::Vec2(arm / 2.0f, reach), gfx::Vec2(arm, 2.0f * reach));
-        gfx::Rect2 horizontal(c - gfx::Vec2(reach, arm / 2.0f), gfx::Vec2(2.0f * reach, arm));
-        canvas.draw_rect(vertical, gfx::Color(0, 0, 0, FILL * rest));
-        canvas.draw_rect(horizontal, gfx::Color(0, 0, 0, FILL * rest));
-        float len = reach - arm / 2.0f;
-        const std::pair<gd::Int, gfx::Rect2> arms[] = {
-            {PadState::UP, gfx::Rect2(c + gfx::Vec2(-arm / 2.0f, -reach), gfx::Vec2(arm, len))},
-            {PadState::DOWN, gfx::Rect2(c + gfx::Vec2(-arm / 2.0f, arm / 2.0f), gfx::Vec2(arm, len))},
-            {PadState::LEFT, gfx::Rect2(c + gfx::Vec2(-reach, -arm / 2.0f), gfx::Vec2(len, arm))},
-            {PadState::RIGHT, gfx::Rect2(c + gfx::Vec2(arm / 2.0f, -arm / 2.0f), gfx::Vec2(len, arm))}};
-        for (const auto& [bit, r] : arms) {
+        const std::pair<gd::Int, gfx::Vec2> arms[] = {{PadState::UP, gfx::Vec2(0, -1)}, {PadState::DOWN, gfx::Vec2(0, 1)},
+                                                      {PadState::LEFT, gfx::Vec2(-1, 0)}, {PadState::RIGHT, gfx::Vec2(1, 0)}};
+        for (const auto& [bit, out] : arms) {
             bool lit = (held & bit) != 0;
-            if (lit) canvas.draw_rect(r, gfx::Color(1, 1, 1, 0.35f * pressed_alpha));
-            canvas.draw_rect(r, with_alpha(lit ? gfx::Color::white() : OUTLINE, lit ? pressed_alpha : rest), false, 2.0f);
-            // A small arrow in the arm, pointing out.
-            gfx::Vec2 mid = centre_of(r);
-            gfx::Vec2 out = bit == PadState::UP ? gfx::Vec2(0, -1) : bit == PadState::DOWN ? gfx::Vec2(0, 1)
-                          : bit == PadState::LEFT ? gfx::Vec2(-1, 0) : gfx::Vec2(1, 0);
             gfx::Vec2 side(-out.y, out.x);
-            float s = arm * 0.22f;
-            canvas.draw_colored_polygon({mid + out * s, mid - out * s * 0.6f + side * s, mid - out * s * 0.6f - side * s},
-                                        gfx::Color(1, 1, 1, lit ? pressed_alpha : rest));
+            std::vector<gfx::Vec2> outer{c + out * reach + side * half, c + out * shoulder + side * half, c + out * tip,
+                                         c + out * shoulder - side * half, c + out * reach - side * half};
+            std::vector<gfx::Vec2> inner = inset(outer, line);
+            canvas.draw_colored_polygon(inner, lit ? gfx::Color(1, 1, 1, 0.35f * pressed_alpha) : gfx::Color(0, 0, 0, FILL * rest));
+            // The outline: one quad per edge between the shape and its inset, so a translucent edge is
+            // the same everywhere (no overlap at the corners).
+            gfx::Color edge = with_alpha(lit ? gfx::Color::white() : OUTLINE, lit ? pressed_alpha : rest);
+            for (size_t i = 0; i < outer.size(); ++i) {
+                size_t j = (i + 1) % outer.size();
+                canvas.draw_colored_polygon({outer[i], outer[j], inner[j], inner[i]}, edge);
+            }
         }
     } else if (!is_inf(_stick_origin)) {
         canvas.draw_circle(_stick_origin, stick, gfx::Color(1, 1, 1, 0.12f * share));
