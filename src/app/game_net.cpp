@@ -108,14 +108,29 @@ void GameApp::_net_show_page() {
             for (size_t i = 0; i < mine.size() && i < 2; ++i) shown += (i ? "  " : "") + mine[i].text();
             main_menu_view.footer = mine.empty() ? "TURN ON WI-FI" : shown;
             main_menu_view.footer_colour = mine.empty() ? WHITE : GREEN;
+            std::string note = Platform::direct_note();
+            if (!note.empty()) {
+                main_menu_view.footer = note;
+                main_menu_view.footer_colour = WHITE;
+            }
             break;
         }
-        case NetPage::SEARCHING:
+        case NetPage::SEARCHING: {
             for (const net::NetSession::Offer& o : _net.offers()) page.push_back(o.name);
+            for (const Platform::DirectHost& h : Platform::direct_hosts()) page.push_back(h.name);
             if (page.empty()) page.push_back("SEARCHING");
             page.push_back("ENTER ADDRESS");
-            main_menu_view.footer = "JOIN GAME";
+            std::string note = Platform::direct_note();
+            main_menu_view.footer = note.empty() ? "JOIN GAME" : note;
             break;
+        }
+        case NetPage::DIRECT: {
+            page = {"CONNECTING", _net_direct_name};
+            main_menu_view.page_cursor = 0;
+            std::string note = Platform::direct_note();
+            main_menu_view.footer = note.empty() ? "WI-FI DIRECT" : note;
+            break;
+        }
         case NetPage::CONNECTING:
             page = {"CONNECTING", _net.peer_name()};
             main_menu_view.page_cursor = 0;
@@ -139,6 +154,7 @@ void GameApp::_net_pages(double now) {
         if (_net_page != NetPage::NONE) {
             _net.close(net::NetSession::Reason::NONE);
             Platform::network_lock(false);
+            Platform::direct_stop();
             _net_page = NetPage::NONE;
         }
         return;
@@ -164,6 +180,7 @@ void GameApp::_net_pages(double now) {
     };
     auto search = [&] {
         _net.search(_net_identity(), now);
+        Platform::direct_search();
         _net_page = NetPage::SEARCHING;
         _net_cursor = 0;
     };
@@ -230,6 +247,7 @@ void GameApp::_net_pages(double now) {
                 s.progress = SessionLog::bytes_of(flow->progress->bytes);
                 if (_net.host(_net_identity(), s, now)) {
                     Platform::network_lock(true);
+                    if (Platform::direct_supported()) Platform::direct_host(Platform::device_name());
                     _net_page = NetPage::HOSTING;
                 } else {
                     message("CANNOT HOST GAME", NetPage::CHOICE);
@@ -244,13 +262,16 @@ void GameApp::_net_pages(double now) {
             } else if (back) {
                 _net.close(net::NetSession::Reason::NONE);
                 Platform::network_lock(false);
+                Platform::direct_stop();
                 _net_page = NetPage::CHOICE;
                 _net_cursor = 0;
             }
             break;
         case NetPage::SEARCHING: {
             gd::Int offers = static_cast<gd::Int>(_net.offers().size());
-            gd::Int items = std::max<gd::Int>(offers, 1) + 1;   // the games (or SEARCHING), ENTER ADDRESS
+            std::vector<Platform::DirectHost> direct = Platform::direct_hosts();
+            gd::Int found = offers + static_cast<gd::Int>(direct.size());
+            gd::Int items = std::max<gd::Int>(found, 1) + 1;   // the games (or SEARCHING), ENTER ADDRESS
             if (up) _net_cursor = (_net_cursor + items - 1) % items;
             if (down) _net_cursor = (_net_cursor + 1) % items;
             _net_cursor = std::min(_net_cursor, items - 1);
@@ -263,6 +284,29 @@ void GameApp::_net_pages(double now) {
             } else if (ok && _net_cursor < offers) {
                 _net.join(_net.offers()[static_cast<size_t>(_net_cursor)].address, mine(), now);
                 _net_page = NetPage::CONNECTING;
+            } else if (ok && _net_cursor < found) {
+                const Platform::DirectHost& h = direct[static_cast<size_t>(_net_cursor - offers)];
+                Log::info("net: Wi-Fi Direct to " + h.name);
+                Platform::direct_connect(h.id);
+                _net_direct_name = h.name;
+                _net_direct_since = now;
+                _net_page = NetPage::DIRECT;
+            }
+            break;
+        }
+        case NetPage::DIRECT: {
+            // In the host's group: its address, then the game's own JOIN as on any network.
+            net::Address host;
+            std::string address = Platform::direct_address();
+            if (!address.empty() && net::Address::parse(address, net::NetSession::PORT, host)) {
+                _net.join(host, mine(), now);
+                _net_page = NetPage::CONNECTING;
+            } else if (now - _net_direct_since > NET_DIRECT_WAIT) {
+                Log::error("net: no Wi-Fi Direct group with " + _net_direct_name + " in " +
+                           std::to_string(int(NET_DIRECT_WAIT)) + " s");
+                message("NO ANSWER", NetPage::SEARCHING);
+            } else if (back) {
+                search();
             }
             break;
         }
@@ -306,6 +350,7 @@ void GameApp::_net_begin() {
     _net_page = NetPage::NONE;
     _net_asking = false;
     Platform::network_lock(false);
+    Platform::direct_settle();
     if (!_net_host) {
         rule_set = RuleSet::original();
         _fixes = s.fixes;
@@ -373,6 +418,7 @@ void GameApp::_net_end(net::NetSession::Reason why) {
     Log::info("net: session ended (" + std::to_string(static_cast<int>(why)) + ") at step " + std::to_string(_net_step) + " after " +
               std::to_string(took) + " s (" + std::to_string(took > 0 ? _net_step / took : 0.0) + " steps a second)");
     _net.close(R::NONE);
+    Platform::direct_stop();
     _net_playing = false;
     _net_waited = -1;
     _net_records.clear();

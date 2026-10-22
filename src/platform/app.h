@@ -4,6 +4,7 @@
 // owns the window, the GL context, the audio device and the clock.
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace t3 {
 
@@ -70,6 +71,22 @@ TextAnswer poll_text(std::string& text);
 // must hear the searches); the system's Wi-Fi panel over the game (Android 10+ lets no app turn
 // Wi-Fi on itself; older versions turn it on).
 std::string device_name();
+// Native: NETWORK MODE over Wi-Fi Direct (the Wi-Fi Direct APK's activity; nothing on the host).
+// The host makes a group and advertises the game; the guest finds hosts (direct_hosts: an id to
+// connect with and a name), connects to one, and once in its group gets the host's address
+// (direct_address). direct_note: what the player should know ("ALLOW NEARBY DEVICES", ...).
+struct DirectHost {
+    std::string id, name;
+};
+bool direct_supported();
+void direct_host(const std::string& name);
+void direct_search();
+void direct_connect(const std::string& id);
+void direct_settle();     // the session began: no more searching
+void direct_stop();
+std::vector<DirectHost> direct_hosts();
+std::string direct_address();
+std::string direct_note();
 void network_lock(bool on);
 void open_wifi_panel();
 }  // namespace Platform

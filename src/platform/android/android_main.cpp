@@ -573,6 +573,61 @@ void network_lock(bool on) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// GameActivity.direct* (WifiDirect.java): Wi-Fi Direct, the Wi-Fi Direct APK's.
+namespace {
+void call_void(const char* name, const char* sig, const std::string* text) {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    jmethodID m = env ? activity_method(env, name, sig) : nullptr;
+    if (!m) return;
+    if (text) {
+        jstring s = env->NewStringUTF(text->c_str());
+        env->CallVoidMethod(g_android->activity->clazz, m, s);
+        env->DeleteLocalRef(s);
+    } else {
+        env->CallVoidMethod(g_android->activity->clazz, m);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
+std::string call_string(const char* name) {
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    jmethodID m = env ? activity_method(env, name, "()Ljava/lang/String;") : nullptr;
+    if (!m) return "";
+    auto got = static_cast<jstring>(env->CallObjectMethod(g_android->activity->clazz, m));
+    if (env->ExceptionCheck()) env->ExceptionClear(), got = nullptr;
+    if (!got) return "";
+    const char* chars = env->GetStringUTFChars(got, nullptr);
+    std::string text = chars ? chars : "";
+    if (chars) env->ReleaseStringUTFChars(got, chars);
+    env->DeleteLocalRef(got);
+    return text;
+}
+}  // namespace
+
+bool direct_supported() { return true; }
+void direct_host(const std::string& name) { call_void("directHost", "(Ljava/lang/String;)V", &name); }
+void direct_search() { call_void("directSearch", "()V", nullptr); }
+void direct_connect(const std::string& id) { call_void("directConnect", "(Ljava/lang/String;)V", &id); }
+void direct_settle() { call_void("directSettle", "()V", nullptr); }
+void direct_stop() { call_void("directStop", "()V", nullptr); }
+std::string direct_address() { return call_string("directAddress"); }
+std::string direct_note() { return call_string("directNote"); }
+
+std::vector<DirectHost> direct_hosts() {
+    std::vector<DirectHost> found;
+    std::string lines = call_string("directHosts");
+    size_t at = 0;
+    while (at < lines.size()) {
+        size_t end = lines.find('\n', at);
+        if (end == std::string::npos) end = lines.size();
+        std::string line = lines.substr(at, end - at);
+        size_t tab = line.find('\t');
+        if (tab != std::string::npos) found.push_back(DirectHost{line.substr(0, tab), line.substr(tab + 1)});
+        at = end + 1;
+    }
+    return found;
+}
+
 void open_wifi_panel() {
     JNIEnv* env = g_android ? game_thread_env() : nullptr;
     static jmethodID m = nullptr;

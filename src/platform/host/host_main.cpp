@@ -321,6 +321,16 @@ std::string device_name() {
     return GetComputerNameA(name, &size) ? std::string(name) : std::string("PC");
 }
 void network_lock(bool on) { Log::debug(std::string("network lock ") + (on ? "on" : "off")); }
+// No Wi-Fi Direct on the computer: the local network only.
+bool direct_supported() { return false; }
+void direct_host(const std::string&) {}
+void direct_search() {}
+void direct_connect(const std::string&) {}
+void direct_settle() {}
+void direct_stop() {}
+std::vector<DirectHost> direct_hosts() { return {}; }
+std::string direct_address() { return ""; }
+std::string direct_note() { return ""; }
 void open_wifi_panel() { Log::info("open_wifi_panel"); }
 }  // namespace t3::Platform
 

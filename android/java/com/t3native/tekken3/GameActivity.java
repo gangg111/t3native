@@ -261,10 +261,39 @@ public class GameActivity extends NativeActivity {
         if (name == null || name.trim().isEmpty()) name = Build.MODEL;
         StringBuilder s = new StringBuilder();
         for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
-            if (c >= 32 && c < 127) s.append(c);
+            // The game's font has no underscore ("sdk_gphone64" drew as "SDK?GPHONE64"): a space.
+            if (c == '_') s.append(' ');
+            else if (c >= 32 && c < 127) s.append(c);
         }
         String plain = s.toString().trim();
         return plain.length() > 20 ? plain.substring(0, 20) : plain;
+    }
+
+    // NETWORK MODE over Wi-Fi Direct (WifiDirect.java), called from the game thread.
+    private WifiDirect direct;
+
+    private synchronized WifiDirect direct() {
+        if (direct == null) direct = new WifiDirect(this);
+        return direct;
+    }
+
+    public void directHost(String name) { direct().host(name); }
+    public void directSearch() { direct().search(); }
+    public void directConnect(String deviceAddress) { direct().connect(deviceAddress); }
+    public void directStop() { direct().stop(); }
+    public void directSettle() { direct().settle(); }
+    /** The hosts found: "device address \t name" lines. */
+    public String directHosts() { return direct().hosts(); }
+    /** The host's address in the group once this guest joined it, else "". */
+    public String directAddress() { return direct().address(); }
+    /** What the player should know ("ALLOW NEARBY DEVICES", "TURN ON WI-FI", ...), else "". */
+    public String directNote() { return direct().note(); }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        direct().permissionAnswered(requestCode, results);
+        hideSystemBars();
     }
 
     private WifiManager.MulticastLock multicastLock;
