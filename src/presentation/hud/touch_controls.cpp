@@ -76,6 +76,37 @@ static std::vector<gfx::Vec2> inset(const std::vector<gfx::Vec2>& points, float 
     return out;
 }
 
+// A convex polygon with each corner rounded to an arc of `radius` (`segments` pieces), the arc
+// tangent to both edges; radius 0 keeps the corner (its point repeated, so that two outlines of the
+// same polygon, the second inset, have the same points and pair up into quads).
+static std::vector<gfx::Vec2> rounded(const std::vector<gfx::Vec2>& points, float radius, int segments) {
+    size_t n = points.size();
+    std::vector<gfx::Vec2> out;
+    for (size_t i = 0; i < n; ++i) {
+        gfx::Vec2 p = points[i];
+        gfx::Vec2 a = points[(i + n - 1) % n] - p, b = points[(i + 1) % n] - p;
+        a = a * (1.0f / length(a));
+        b = b * (1.0f / length(b));
+        float half = 0.5f * std::acos(std::clamp(a.x * b.x + a.y * b.y, -1.0f, 1.0f));   // half the inside angle
+        if (radius <= 0.0f || half <= 0.0f) {
+            for (int k = 0; k <= segments; ++k) out.push_back(p);
+            continue;
+        }
+        gfx::Vec2 bisector = a + b;
+        bisector = bisector * (1.0f / length(bisector));
+        gfx::Vec2 centre = p + bisector * (radius / std::sin(half));
+        gfx::Vec2 from = p + a * (radius / std::tan(half)) - centre, to = p + b * (radius / std::tan(half)) - centre;
+        float start = std::atan2(from.y, from.x), sweep = std::atan2(to.y, to.x) - start;
+        while (sweep > TAU / 2.0f) sweep -= TAU;
+        while (sweep < -TAU / 2.0f) sweep += TAU;
+        for (int k = 0; k <= segments; ++k) {
+            float angle = start + sweep * static_cast<float>(k) / static_cast<float>(segments);
+            out.push_back(centre + gfx::Vec2(std::cos(angle), std::sin(angle)) * radius);
+        }
+    }
+    return out;
+}
+
 const gd::Arr<gd::Int> TouchControls::FACE{PadState::TRIANGLE, PadState::SQUARE, PadState::CIRCLE, PadState::CROSS};
 const gd::Arr<gfx::Vec2> TouchControls::FACE_OFFSETS{gfx::Vec2(0, -1), gfx::Vec2(-1, 0), gfx::Vec2(1, 0), gfx::Vec2(0, 1)};
 const gd::Dict<std::string, gd::Arr<gd::Int>> TouchControls::MACRO_SETS = [] {
@@ -506,9 +537,12 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
         for (const auto& [bit, out] : arms) {
             bool lit = (held & bit) != 0;
             gfx::Vec2 side(-out.y, out.x);
-            std::vector<gfx::Vec2> outer{c + out * reach + side * half, c + out * shoulder + side * half, c + out * tip,
+            std::vector<gfx::Vec2> shape{c + out * reach + side * half, c + out * shoulder + side * half, c + out * tip,
                                          c + out * shoulder - side * half, c + out * reach - side * half};
-            std::vector<gfx::Vec2> inner = inset(outer, line);
+            // Round corners as on the PlayStation's pad: the outer arcs DPAD_ROUND of the outline's
+            // width, the inner ones about the same centres (the outline's width smaller).
+            std::vector<gfx::Vec2> outer = rounded(shape, DPAD_ROUND * line, DPAD_ARC);
+            std::vector<gfx::Vec2> inner = rounded(inset(shape, line), (DPAD_ROUND - 1.0f) * line, DPAD_ARC);
             canvas.draw_colored_polygon(inner, lit ? gfx::Color(1, 1, 1, 0.35f * pressed_alpha) : gfx::Color(0, 0, 0, FILL * rest));
             // The outline: one quad per edge between the shape and its inset, so a translucent edge is
             // the same everywhere (no overlap at the corners).
