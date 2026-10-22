@@ -22,7 +22,7 @@ NO_WINDOW = 0x08000000                     # CREATE_NO_WINDOW: the child is a co
 IMAGE_SUFFIXES = (".cue", ".ecm", ".bin", ".iso")   # in order of preference
 # A CHD needs MAME's chdman (disc_image._chd), which the builder does not carry.
 CHD_NOTE = "Obrazy .chd nie są obsługiwane: rozpakuj je do .cue/.bin (chdman extractcd z pakietu MAME)."
-SETTINGS = pipeline.APP_ROOT.parent / "ustawienia.json"
+SETTINGS = pipeline.HOME / "ustawienia.json"
 
 BG = "#121218"
 PANEL = "#1c1c26"
@@ -204,7 +204,7 @@ class Window:
         for name in ("jp", "usa", "arcade", "out"):
             getattr(self, name).set(data.get(name, ""))
         if not self.out.value():
-            self.out.set(str(pipeline.APP_ROOT.parent / "APK"))
+            self.out.set(str(pipeline.HOME / "APK"))
 
     def save_settings(self) -> None:
         data = {name: getattr(self, name).value() for name in ("jp", "usa", "arcade", "out")}
@@ -242,7 +242,7 @@ class Window:
         if arcade is not None and not arcade.is_file():
             self.say("Nie ma pliku zestawu automatu.", ERROR)
             return
-        out = Path(self.out.value() or pipeline.APP_ROOT.parent / "APK")
+        out = Path(self.out.value() or pipeline.HOME / "APK")
         self.save_settings()
         command = [python_exe(), "-E", "-s", "-u", "-m", "t3builder.pipeline", "--jp", str(jp), "--out", str(out)]
         if usa:

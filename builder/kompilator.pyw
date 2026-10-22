@@ -15,7 +15,7 @@ try:
     from t3builder import gui
     gui.main()
 except Exception:  # noqa: BLE001  (pythonw hides crashes: keep the trace and say so)
-    log = Path(__file__).resolve().parents[1] / "crash.log"
+    log = Path(os.environ.get("T3B_HOME", Path(__file__).resolve().parents[1])) / "crash.log"
     log.write_text(traceback.format_exc(), encoding="utf-8")
     import ctypes
     ctypes.windll.user32.MessageBoxW(None, f"Kompilator przerwał pracę. Szczegóły: {log}", "Kompilator Tekken 3", 0x10)

@@ -1,8 +1,10 @@
-"""Lays out the self-contained builder folder (build/builder/Tekken3Builder): everything a user needs
-to make the APK from their own discs, with nothing to install.
+"""Makes the one-file builder (build/builder/Kompilator Tekken 3.exe): everything a user needs to
+make the APK from their own discs, with nothing to install. First the folder
+(build/builder/Tekken3Builder), then the launcher (builder/launcher.cpp) with that folder appended
+as an archive, which it unpacks to %LOCALAPPDATA% and runs in a clean environment.
 
     Tekken3Builder/
-      Kompilator Tekken 3.exe       the launcher (builder/launcher.c): runs the window below
+      Kompilator Tekken 3.exe       the launcher without an archive: runs the folder it lies in
       app/                          t3builder (window, pipeline, signing) and kompilator.pyw
       runtime/python/               a CPython 3.12 copy with numpy, Pillow and xxhash
       runtime/ffmpeg/               ffmpeg.exe, ffprobe.exe
@@ -21,12 +23,15 @@ The key (klucz/) and the conversions (praca/) appear on the user's first build.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 
 import build_apk
@@ -45,10 +50,15 @@ T3_TOOLS = ("build_apk.py", "movies_from_disc.py", "font_sheets_from_disc.py", "
 REMAKE_DIRS = ("tools/remake_import", "tools/research")
 SKIPPED = shutil.ignore_patterns("__pycache__", ".pytest_cache", "tests", "*.pyc")
 LAUNCHER = "Kompilator Tekken 3.exe"
+ONE_FILE = ROOT / "build/builder" / LAUNCHER       # the one-file builder, next to the folder
 # builder/ffmpeg_min.sh's install folder (MSYS2 home): FFmpeg 8.0.1, LGPL, shared.
 FFMPEG = Path(os.environ.get("T3_FFMPEG_MIN", f"C:/msys64/home/{Path.home().name}/t3ff/out/bin"))
-GPP = Path("C:/mingw64/bin/g++.exe")
-WINDRES = Path("C:/mingw64/bin/windres.exe")
+# MSYS2's MinGW-w64 g++: its static zlib goes into the launcher.
+GPP = Path("C:/msys64/mingw64/bin/g++.exe")
+PACK_MAGIC = b"T3BPAK01"
+PACK_LEVEL = 9
+USER_DIRS = {"klucz", "praca", "APK"}
+USER_FILES = {"ustawienia.json", "crash.log"}
 # Files whose presence means game data got in: the converter's marker and its outputs.
 FORBIDDEN = (".converter", "manifest.json", "texture_index.json")
 
@@ -107,10 +117,55 @@ def python_runtime(out: Path) -> None:
         shutil.copytree(SITE / package, lib / "site-packages" / package, ignore=SKIPPED)
 
 
-def launcher(out: Path) -> None:
-    source = ROOT / "builder/launcher.c"
-    subprocess.run([str(GPP), "-O2", "-municode", "-mwindows", "-static", "-x", "c", str(source),
-                    "-o", str(out / LAUNCHER)], check=True)
+def launcher(dest: Path) -> None:
+    """builder/launcher.cpp, static (zlib included), as `dest`: with no archive appended it runs
+    the folder it lies in."""
+    env = dict(os.environ, PATH=str(GPP.parent) + os.pathsep + os.environ.get("PATH", ""))
+    subprocess.run([str(GPP), "-O2", "-s", "-municode", "-mwindows", "-static", str(ROOT / "builder/launcher.cpp"),
+                    "-o", str(dest), "-lz", "-lshell32", "-lole32", "-luuid"], check=True, env=env)
+
+
+def packed_files(folder: Path) -> list[Path]:
+    """The builder folder's files that go into the one-file builder: not the user's own (key,
+    conversions, APKs, settings) nor the folder's launcher."""
+    files = []
+    for path in sorted(folder.rglob("*")):
+        rel = path.relative_to(folder)
+        if path.is_file() and rel.parts[0] not in USER_DIRS and rel.name not in USER_FILES and rel.name != LAUNCHER:
+            files.append(path)
+    return files
+
+
+def pack(folder: Path, exe: Path) -> str:
+    """The one-file builder: the launcher with the folder appended as an archive (raw deflate per
+    file, an index, a 40-byte trailer: magic, index offset, index size, the archive's id). Returns
+    the id: the first 16 hex digits of the SHA-256 of everything before the trailer."""
+    launcher(exe)
+    digest = hashlib.sha256()
+    index = []
+    with open(exe, "ab") as out:
+        base = out.tell()
+        for path in packed_files(folder):
+            data = path.read_bytes()
+            packer = zlib.compressobj(PACK_LEVEL, zlib.DEFLATED, -15)
+            packed = packer.compress(data) + packer.flush()
+            method = 8
+            if len(packed) >= len(data):
+                packed, method = data, 0
+            offset = out.tell()
+            out.write(packed)
+            digest.update(packed)
+            name = path.relative_to(folder).as_posix().encode()
+            index.append(struct.pack("<H", len(name)) + name +
+                         struct.pack("<QQQIB", offset, len(packed), len(data), zlib.crc32(data), method))
+        table = struct.pack("<I", len(index)) + b"".join(index)
+        digest.update(table)
+        index_offset = out.tell()
+        out.write(table)
+        archive_id = digest.hexdigest()[:16]
+        out.write(PACK_MAGIC + struct.pack("<QQ", index_offset, len(table)) + archive_id.encode())
+    print(f"{exe.name}: {len(index)} files from {base} B on, id {archive_id}")
+    return archive_id
 
 
 def check_no_game_data(out: Path) -> None:
@@ -155,10 +210,12 @@ def main() -> int:
         if path.suffix in (".exe", ".dll") and path.name != "ffplay.exe":
             shutil.copy2(path, out / "runtime/ffmpeg" / path.name)
     shutil.copytree(ffmpeg / "licenses", out / "runtime/ffmpeg/licenses")
-    launcher(out)
+    launcher(out / LAUNCHER)
     check_no_game_data(out)
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     print(f"{out}: {size / 1e6:.0f} MB")
+    pack(out, ONE_FILE)
+    print(f"{ONE_FILE}: {ONE_FILE.stat().st_size / 1e6:.0f} MB")
     return 0
 
 

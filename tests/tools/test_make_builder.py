@@ -29,6 +29,52 @@ def test_clean_folder_passes(tmp_path):
     make_builder.check_no_game_data(tmp_path)
 
 
+def read_archive(exe: Path) -> tuple[str, dict[str, bytes]]:
+    """The archive at the end of `exe`, read by the format builder/launcher.cpp reads (written
+    here again, apart from make_builder.pack): 40-byte trailer, index, raw deflate or stored data."""
+    import struct
+    import zlib
+    data = exe.read_bytes()
+    trailer = data[-40:]
+    assert trailer[:8] == b"T3BPAK01"
+    index_offset, index_size = struct.unpack_from("<QQ", trailer, 8)
+    index = data[index_offset:index_offset + index_size]
+    count = struct.unpack_from("<I", index)[0]
+    p, files = 4, {}
+    for _ in range(count):
+        n = struct.unpack_from("<H", index, p)[0]
+        name = index[p + 2:p + 2 + n].decode()
+        offset, packed, size, crc, method = struct.unpack_from("<QQQIB", index, p + 2 + n)
+        p += 2 + n + 29
+        raw = data[offset:offset + packed]
+        content = zlib.decompress(raw, -15) if method == 8 else raw
+        assert len(content) == size and zlib.crc32(content) == crc
+        files[name] = content
+    return trailer[24:].decode(), files
+
+
+def test_pack_round_trip_and_user_files_left_out(tmp_path, monkeypatch):
+    folder = tmp_path / "Tekken3Builder"
+    (folder / "app/t3builder").mkdir(parents=True)
+    (folder / "app/t3builder/x.py").write_bytes(b"print('x')\n" * 50)     # bytes: no CRLF translation
+    (folder / "runtime").mkdir()
+    (folder / "runtime/random.bin").write_bytes(bytes(range(256)) * 3)
+    for user in ("klucz/klucz.json", "praca/imported/a.png", "APK/Tekken3.apk", "ustawienia.json", "crash.log"):
+        (folder / user).parent.mkdir(parents=True, exist_ok=True)
+        (folder / user).write_text("user's")
+    (folder / make_builder.LAUNCHER).write_bytes(b"MZ folder launcher")
+    monkeypatch.setattr(make_builder, "launcher", lambda dest: dest.write_bytes(b"MZ stub"))
+    exe = tmp_path / "one.exe"
+    archive_id = make_builder.pack(folder, exe)
+    assert exe.read_bytes().startswith(b"MZ stub")
+    read_id, files = read_archive(exe)
+    assert read_id == archive_id and len(archive_id) == 16
+    # source: the folder written above, minus the user's own files and the folder's launcher
+    assert sorted(files) == ["app/t3builder/x.py", "runtime/random.bin"]
+    assert files["app/t3builder/x.py"] == b"print('x')\n" * 50
+    assert files["runtime/random.bin"] == bytes(range(256)) * 3
+
+
 def test_placeholder_icon_is_plain(tmp_path):
     from PIL import Image
     make_builder.placeholder_icon(tmp_path / "i.png")

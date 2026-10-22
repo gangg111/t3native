@@ -34,6 +34,9 @@ from t3builder import apk_sign
 log = logging.getLogger("t3builder")
 
 APP_ROOT = Path(__file__).resolve().parents[1]          # the folder holding the t3builder package
+# The user's side of the builder: the folder of the one-file builder's .exe (its launcher sets
+# T3B_HOME; the unpacked builder itself lies elsewhere): the key, the settings, the APKs.
+HOME = Path(os.environ.get("T3B_HOME", APP_ROOT.parent))
 ABIS = ("arm64-v8a", "x86_64")
 MOVIE_VARIANT = "small"                                   # the Android variant (build_apk skips .large)
 ICON_SIZE = 192                                           # mipmap-xxxhdpi
@@ -57,7 +60,7 @@ class Layout:
         root = APP_ROOT.parent
         if (root / "remake").is_dir():
             return Layout(root / "remake", root / "t3native/tools", root / "template", root / "runtime/ffmpeg",
-                          root / "praca", root / "klucz/klucz.json")
+                          Path(os.environ.get("T3B_WORK", root / "praca")), HOME / "klucz/klucz.json")
         repo = APP_ROOT.parent                              # builder/ in the t3native checkout
         return Layout(Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake")), repo / "tools",
                       repo / "build/builder/template", None, repo / "build/builder/work",
