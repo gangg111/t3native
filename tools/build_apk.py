@@ -87,6 +87,23 @@ def run(*cmd, env: dict | None = None) -> None:
     subprocess.run([str(c) for c in cmd], check=True, env=env)
 
 
+def base_apk(tmp: Path, res_dir: Path = ROOT / "android/res") -> Path:
+    """The manifest and the resources linked by aapt2 into `tmp/base.apk`."""
+    res = tmp / "res.zip"
+    run(BUILD_TOOLS / "aapt2.exe", "compile", "-o", res, "--dir", res_dir)
+    base = tmp / "base.apk"
+    run(BUILD_TOOLS / "aapt2.exe", "link", "-o", base, "-I", PLATFORM_JAR,
+        "--manifest", ROOT / "android/AndroidManifest.xml", res)
+    return base
+
+
+def stripped(abi: str, tmp: Path) -> Path:
+    """The CMake build's libt3game.so of `abi` without its symbols."""
+    out = tmp / f"libt3game-{abi}.so"
+    run(STRIP, "--strip-unneeded", "-o", out, ROOT / f"build/android-{abi}/libt3game.so")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--abi", action="append", help="arm64-v8a, x86_64 (default: both)")
@@ -98,23 +115,14 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        res = tmp / "res.zip"
-        run(BUILD_TOOLS / "aapt2.exe", "compile", "-o", res,
-            "--dir", ROOT / "android/res")
-        base = tmp / "base.apk"
-        run(BUILD_TOOLS / "aapt2.exe", "link", "-o", base, "-I", PLATFORM_JAR,
-            "--manifest", ROOT / "android/AndroidManifest.xml", res)
-
+        base = base_apk(tmp)
         classes_dex = dex(ROOT / "android/java", tmp)
         unaligned = tmp / "unaligned.apk"
         shutil.copy(base, unaligned)
         with zipfile.ZipFile(unaligned, "a") as z:
             z.write(classes_dex, "classes.dex", zipfile.ZIP_DEFLATED)
             for abi in abis:
-                lib = ROOT / f"build/android-{abi}/libt3game.so"
-                stripped = tmp / f"libt3game-{abi}.so"
-                run(STRIP, "--strip-unneeded", "-o", stripped, lib)
-                z.write(stripped, f"lib/{abi}/libt3game.so", zipfile.ZIP_STORED)
+                z.write(stripped(abi, tmp), f"lib/{abi}/libt3game.so", zipfile.ZIP_STORED)
             entries = asset_entries(REMAKE / "imported", REMAKE / "content/texts_en.json", not args.no_movies, not args.no_music)
             for name, path in entries:
                 z.write(path, name, compression(name))

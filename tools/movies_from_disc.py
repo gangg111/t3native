@@ -18,6 +18,7 @@ import argparse
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -102,6 +103,30 @@ def listed_names(movies_json: Path) -> set[str]:
     return names
 
 
+def encode_movie(media, tool, raw: bytes, arrivals: list[int], variants: dict[str, int],
+                 write) -> tuple[float, list[str]]:
+    """One movie's frames and sound (`media._movie_sectors`) encoded to each variant and checked;
+    `write(variant, part_path)` keeps a good file. Returns the duration and the problems found."""
+    duration = arrivals[-1] / media.SECTORS_PER_SECOND + media.MOVIE_TAIL
+    slots = math.ceil(duration * FPS)
+    pcm, rate, channels = media._pcm(tool, raw)
+    pcm = pcm[:min(len(pcm) // (2 * channels), round(duration * rate)) * 2 * channels]
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        media._grid_frames(tool, raw, arrivals, duration, folder)
+        (folder / "audio.wav").write_bytes(media.wav_bytes(pcm, rate, channels))
+        for variant, quality in variants.items():
+            part = folder / f"{variant}.part.mpg"
+            encode(folder, part, quality)
+            found = problems(check(part), slots, duration)
+            if found:
+                failures.append(f"{variant}: {'; '.join(found)}")
+                continue
+            write(variant, part)
+    return duration, failures
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--disc", type=Path, default=DISC)
@@ -124,26 +149,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.only and name not in args.only:
             continue
         raw, arrivals = media._movie_sectors(disc, movie)
-        duration = arrivals[-1] / media.SECTORS_PER_SECOND + media.MOVIE_TAIL
-        slots = math.ceil(duration * FPS)
-        pcm, rate, channels = media._pcm(tool, raw)
-        pcm = pcm[:min(len(pcm) // (2 * channels), round(duration * rate)) * 2 * channels]
-        with tempfile.TemporaryDirectory() as tmp:
-            folder = Path(tmp)
-            media._grid_frames(tool, raw, arrivals, duration, folder)
-            (folder / "audio.wav").write_bytes(media.wav_bytes(pcm, rate, channels))
-            for variant, quality in QUALITIES.items():
-                dest = args.out / f"{name}.{variant}.mpg"
-                part = dest.with_name(dest.stem + ".part.mpg")
-                encode(folder, part, quality)
-                found = problems(check(part), slots, duration)
-                if found:
-                    failed += 1
-                    part.unlink(missing_ok=True)
-                    print(f"FAILED {dest.name}: {'; '.join(found)}", file=sys.stderr)
-                    continue
-                os.replace(part, dest)
-                print(f"{dest.name}: {slots} frames, {duration:.3f} s, {dest.stat().st_size / 1e6:.2f} MB")
+
+        def keep(variant: str, part: Path) -> None:
+            dest = args.out / f"{name}.{variant}.mpg"
+            shutil.move(part, dest)
+            print(f"{dest.name}: {dest.stat().st_size / 1e6:.2f} MB")
+
+        duration, failures = encode_movie(media, tool, raw, arrivals, QUALITIES, keep)
+        for failure in failures:
+            failed += 1
+            print(f"FAILED {name} {failure}", file=sys.stderr)
+        print(f"{name}: {duration:.3f} s")
     print("done" if not failed else f"{failed} failed")
     return 1 if failed else 0
 
