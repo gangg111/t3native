@@ -261,7 +261,9 @@ public class GameActivity extends NativeActivity {
         if (name == null || name.trim().isEmpty()) name = Build.MODEL;
         StringBuilder s = new StringBuilder();
         for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
-            if (c >= 32 && c < 127) s.append(c);
+            // The game's font has no underscore ("sdk_gphone64" drew as "SDK?GPHONE64"): a space.
+            if (c == '_') s.append(' ');
+            else if (c >= 32 && c < 127) s.append(c);
         }
         String plain = s.toString().trim();
         return plain.length() > 20 ? plain.substring(0, 20) : plain;
