@@ -276,7 +276,18 @@ final class WifiDirect {
                     hosts.put(GROUP_HOST, "GROUP HOST");
                 }
             } else if (info != null && info.groupFormed) {
-                log("this phone owns a group: the other phone hosts in it (found by the local search)");
+                // This phone owns a group. With the other phone in it, that phone hosts there (the local
+                // search finds it); an empty one is left over (an earlier try) and keeps this phone
+                // from joining the host's group: it goes.
+                manager.requestGroupInfo(channel, group -> {
+                    if (group != null && group.getClientList().isEmpty()) {
+                        log("this phone owns an empty group (" + group.getNetworkName() + "), left over: removed");
+                        manager.removeGroup(channel, quiet());
+                    } else {
+                        log("this phone owns a group with " + (group != null ? group.getClientList().size() : 0)
+                                + " phone(s) in it: the other phone hosts there (found by the local search)");
+                    }
+                });
             }
         });
         manager.setDnsSdResponseListeners(channel, (instance, type, device) -> {
