@@ -17,14 +17,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -40,8 +34,7 @@ import java.util.Map;
  * that owns one advertises in it, and a guest in one lists its owner as GROUP HOST at once. Only a
  * group this app made is removed again (ownGroup).
  *
- * Every step goes to the log and to wifidirect.log in the app's files folder (readable over USB or
- * with a file manager, without adb).
+ * Every step goes to the log and to the network log in Downloads (t3native_net_<time>.txt).
  *
  * Called from the game thread; every WifiP2pManager call runs on the main thread, whose looper
  * gets the answers. The state the game reads (hosts(), address(), note()) is synchronized.
@@ -420,21 +413,11 @@ final class WifiDirect {
         };
     }
 
-    private final SimpleDateFormat clock = new SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT);
-
-    /** A step of Wi-Fi Direct: the log and wifidirect.log in the app's files folder. */
+    /** A step of Wi-Fi Direct: the system log and the network log in Downloads (GameActivity.netLine). */
     private void log(String text) {
         String line = "net: Wi-Fi Direct " + text;
         Log.i(TAG, line);
-        try {
-            File dir = activity.getExternalFilesDir(null);
-            if (dir == null) return;
-            try (FileOutputStream out = new FileOutputStream(new File(dir, "wifidirect.log"), true)) {
-                out.write((clock.format(new Date()) + " " + line + "\n").getBytes(StandardCharsets.UTF_8));
-            }
-        } catch (Exception e) {
-            // No log file: the system log has it.
-        }
+        if (activity instanceof GameActivity) ((GameActivity) activity).netLine(line);
     }
 
     private synchronized void setNote(String text) {
