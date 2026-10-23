@@ -522,8 +522,10 @@ void QuickSelectView::_texts() {
                 colour = 5;
             }
             gd::Int x0 = x - ((_length(s) * 0xD) >> 1);
-            text(s, 1, colour, x0, y);
+            // The plate is linked after the name, so the ordering table draws it first: under the
+            // letters (drawn over them, it hid their lower half).
             if (named) _name_plate(x0 - 4, y + 0x12, _length(s) * 0xD + 10, key & 3);
+            text(s, 1, colour, x0, y);
         } else if (kind == 4) {
             coin(p, x, y + 4, 10, frame_count);
         } else if (kind == 5) {

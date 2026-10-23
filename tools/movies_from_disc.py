@@ -27,7 +27,10 @@ from pathlib import Path
 
 REMAKE = Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake"))
 DISC = Path(os.environ.get("T3_DISC", "D:/Tekken 3/japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"))
-QUALITIES = {"large": 2, "small": 5}   # mpeg1video -q:v (2 best ... 31 worst)
+# mpeg1video -q:v (1 best ... 31 worst): both at the best, the user wants the movies at their
+# highest quality on the phone too (title_0: 1 = 30.6 MB, 50.8 dB PSNR against the disc's frames;
+# 5 = 7.9 MB, 41.7 dB). 1 needs -qmin 1, whose default of 2 raises it silently.
+QUALITIES = {"large": 1, "small": 1}
 AUDIO_RATE = 44100
 FPS = 30                               # media.MOVIE_FPS: the grid the frames are laid out on
 DURATION_TOLERANCE = 1.0 / FPS         # seconds: the grid's last slot
@@ -44,8 +47,8 @@ def encode(folder: Path, dest: Path, quality: int) -> None:
     """`grid_%06d.png` and `audio.wav` in `folder` (media._grid_frames) to an MPEG-1 program stream."""
     run = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-y", "-v", "error", "-framerate", str(FPS),
                           "-i", str(folder / "grid_%06d.png"), "-i", str(folder / "audio.wav"),
-                          "-map", "0:v", "-map", "1:a", "-c:v", "mpeg1video", "-q:v", str(quality),
-                          "-c:a", "mp2", "-b:a", "192k", "-ar", str(AUDIO_RATE), "-f", "mpeg", str(dest)],
+                          "-map", "0:v", "-map", "1:a", "-c:v", "mpeg1video", "-qmin", "1", "-q:v", str(quality),
+                          "-c:a", "mp2", "-b:a", "384k", "-ar", str(AUDIO_RATE), "-f", "mpeg", str(dest)],
                          capture_output=True, text=True)
     if run.returncode != 0:
         raise RuntimeError(f"{dest.name}: ffmpeg failed: {run.stderr.strip()[-400:]}")
