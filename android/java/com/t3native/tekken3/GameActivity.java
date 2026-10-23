@@ -205,7 +205,17 @@ public class GameActivity extends NativeActivity {
     private OutputStream perfOut;
 
     private OutputStream openPerfFile() throws Exception {
-        String name = "t3native_perf_" + new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ROOT).format(new Date()) + ".txt";
+        return openDownloads("t3native_perf_", "t3native performance log: " + Build.MANUFACTURER + " " + Build.MODEL
+                + ", Android " + Build.VERSION.RELEASE
+                + ", display " + getWindowManager().getDefaultDisplay().getRefreshRate() + " Hz\n"
+                + "frame = median/longest interval, jank = intervals over 1.5 x the median, cpu = mean/95%/longest,"
+                + " gpu = mean/longest, shadow/scene/post/2d = the GPU per pass (means, every other frame),"
+                + " stage = the fight's stage and version, battery in C, headroom 1.0 = throttling\n");
+    }
+
+    /** `<prefix><time>.txt` in Downloads (MediaStore, Android 10+; before, the app's files folder), `head` first. */
+    private OutputStream openDownloads(String prefix, String head) throws Exception {
+        String name = prefix + new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ROOT).format(new Date()) + ".txt";
         OutputStream out;
         if (Build.VERSION.SDK_INT >= 29) {
             ContentValues values = new ContentValues();
@@ -218,13 +228,35 @@ public class GameActivity extends NativeActivity {
             out = new FileOutputStream(new File(getExternalFilesDir(null), name));
         }
         if (out == null) return null;
-        String head = "t3native performance log: " + Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE
-                + ", display " + getWindowManager().getDefaultDisplay().getRefreshRate() + " Hz\n"
-                + "frame = median/longest interval, jank = intervals over 1.5 x the median, cpu = mean/95%/longest,"
-                + " gpu = mean/longest, shadow/scene/post/2d = the GPU per pass (means, every other frame),"
-                + " stage = the fight's stage and version, battery in C, headroom 1.0 = throttling\n";
         out.write(head.getBytes(StandardCharsets.UTF_8));
         return out;
+    }
+
+    private OutputStream netOut;
+    private final SimpleDateFormat netClock = new SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT);
+
+    /**
+     * NETWORK MODE's log (any thread): each "net:" line of the game and of Wi-Fi Direct, with the
+     * time, in t3native_net_<time>.txt in Downloads, made at the first line of a run.
+     */
+    public void netLine(final String line) {
+        final String stamped;
+        synchronized (netClock) {   // called from the game thread and from Wi-Fi Direct's
+            stamped = netClock.format(new Date()) + " " + line + "\n";
+        }
+        perfWriter.execute(() -> {
+            try {
+                if (netOut == null) {
+                    netOut = openDownloads("t3native_net_", "t3native network log: " + Build.MANUFACTURER + " " + Build.MODEL
+                            + ", Android " + Build.VERSION.RELEASE + ", " + getPackageName() + "\n");
+                }
+                if (netOut == null) return;
+                netOut.write(stamped.getBytes(StandardCharsets.UTF_8));
+                netOut.flush();
+            } catch (Exception e) {
+                netOut = null;   // tried again with the next line
+            }
+        });
     }
 
     private String temperatures() {

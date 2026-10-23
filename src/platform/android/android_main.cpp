@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <mutex>
 #include <string>
 #include <time.h>
 #include <vector>
@@ -549,6 +550,39 @@ void perf_line(const std::string& line) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// NETWORK MODE's log in Downloads: the "net:" lines (from any thread) wait here; the game thread
+// hands them to GameActivity.netLine once a frame (net_flush), which appends them to
+// t3native_net_<time>.txt on its writer thread.
+namespace {
+std::mutex g_net_mutex;
+std::vector<std::string> g_net_lines;
+}  // namespace
+
+void net_tap(const std::string& message) {
+    if (message.rfind("net:", 0) != 0) return;
+    std::lock_guard<std::mutex> lock(g_net_mutex);
+    if (g_net_lines.size() < 256) g_net_lines.push_back(message);
+}
+
+void net_flush() {
+    std::vector<std::string> lines;
+    {
+        std::lock_guard<std::mutex> lock(g_net_mutex);
+        lines.swap(g_net_lines);
+    }
+    if (lines.empty()) return;
+    JNIEnv* env = g_android ? game_thread_env() : nullptr;
+    static jmethodID m = nullptr;
+    if (env && !m) m = activity_method(env, "netLine", "(Ljava/lang/String;)V");
+    if (!m) return;
+    for (const std::string& line : lines) {
+        jstring s = env->NewStringUTF(line.c_str());
+        env->CallVoidMethod(g_android->activity->clazz, m, s);
+        env->DeleteLocalRef(s);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+}
+
 // GameActivity.deviceName / netLock / wifiPanel (NETWORK MODE).
 std::string device_name() {
     JNIEnv* env = g_android ? game_thread_env() : nullptr;
@@ -611,6 +645,7 @@ void android_main(android_app* app) {
     app->onInputEvent = on_input;
     t3::GameOptions options;
     g_app = new t3::GameApp(options);
+    t3::Log::tap(t3::Platform::net_tap);
     while (true) {
         int events = 0;
         android_poll_source* source = nullptr;
@@ -630,6 +665,7 @@ void android_main(android_app* app) {
             audio_close();
             audio_open();
         }
+        t3::Platform::net_flush();
         if (g_started && g_surface != EGL_NO_SURFACE && !g_paused) {
             poll_pad_devices(monotonic());
             g_app->frame(monotonic());
