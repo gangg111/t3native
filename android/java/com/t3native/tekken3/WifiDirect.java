@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pConfig;
+import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest;
@@ -60,6 +61,8 @@ final class WifiDirect {
     private Runnable afterPermission;                  // what waits for the player's answer
     private boolean ownGroup;                          // the group was made (or joined) by this app
     private String groupOwner = "";                    // GUEST: the owner of a group already joined
+    private int p2pState = -1;                         // the last WIFI_P2P_STATE_CHANGED_ACTION, -1 none yet
+    private boolean waitingOn;                         // a step answered BUSY with Wi-Fi Direct off: again when on
 
     // What the game reads.
     private final Map<String, String> hosts = new LinkedHashMap<>();   // device address -> name
@@ -115,18 +118,78 @@ final class WifiDirect {
                 setAddress(groupOwner);
                 return;
             }
-            main.removeCallbacks(refresh);
-            manager.stopPeerDiscovery(channel, quiet());   // a scan running makes connect BUSY
-            // The host's phone may ask its player to accept the connection.
-            setNote("ACCEPT ON PLAYER 1 PHONE");
+            log("connect to " + deviceAddress);
+            setNote("CONNECTING");
+            target = deviceAddress;
+            connectTries = 0;
+            peerWaits = 0;
+            tryConnect();
+        });
+    }
+
+    private String target = "";       // the host connected to
+    private int connectTries, peerWaits;
+    private static final int CONNECT_TRIES = 4, PEER_WAITS = 15;
+
+    /**
+     * connect() to `target` once it is in the phone's own list of devices nearby: the system drops a
+     * connect to a device it has not discovered itself (ERROR), even one whose game was found (the
+     * user's Fold7 failed so twice in a row). Discovery keeps running meanwhile; an ERROR or BUSY is
+     * tried again after a new discovery.
+     */
+    private void tryConnect() {
+        if (manager == null || role != Role.GUEST || target.isEmpty()) return;
+        manager.requestPeers(channel, peers -> {
+            WifiP2pDevice device = peers != null ? peers.get(target) : null;
+            if (device == null) {
+                if (++peerWaits > PEER_WAITS) {
+                    log(target + " not among the devices nearby in " + PEER_WAITS + " s");
+                    setNote("PLAYER 1 NOT FOUND");
+                    return;
+                }
+                if (peerWaits == 1) log(target + " not among the devices nearby yet: discovering");
+                manager.discoverPeers(channel, quiet());
+                main.postDelayed(this::tryConnect, 1000);
+                return;
+            }
+            log("peer " + device.deviceName + " " + statusName(device.status) + (device.isGroupOwner() ? ", group owner" : ""));
             WifiP2pConfig config = new WifiP2pConfig();
-            config.deviceAddress = deviceAddress;
+            config.deviceAddress = target;
             config.groupOwnerIntent = 0;      // the host is the group owner
             config.wps.setup = WpsInfo.PBC;
-            log("connect to " + deviceAddress);
             ownGroup = true;
-            call("connect", l -> manager.connect(channel, config, l), null);
+            // The host's phone may ask its player to accept the connection.
+            setNote("ACCEPT ON PLAYER 1 PHONE");
+            manager.connect(channel, config, new WifiP2pManager.ActionListener() {
+                @Override
+                public void onSuccess() {
+                    log("connect: started");
+                }
+
+                @Override
+                public void onFailure(int reason) {
+                    boolean again = (reason == WifiP2pManager.ERROR || reason == WifiP2pManager.BUSY) && ++connectTries < CONNECT_TRIES;
+                    log("connect: " + reasonName(reason) + (again ? ", again" : ""));
+                    if (again) {
+                        manager.discoverPeers(channel, quiet());
+                        main.postDelayed(() -> tryConnect(), 2000);
+                    } else {
+                        setNote("WI-FI DIRECT FAILED");
+                    }
+                }
+            });
         });
+    }
+
+    private static String statusName(int status) {
+        switch (status) {
+            case WifiP2pDevice.AVAILABLE: return "available";
+            case WifiP2pDevice.CONNECTED: return "connected";
+            case WifiP2pDevice.INVITED: return "invited";
+            case WifiP2pDevice.FAILED: return "failed";
+            case WifiP2pDevice.UNAVAILABLE: return "unavailable";
+            default: return "status " + status;
+        }
     }
 
     void stop() {
@@ -209,9 +272,21 @@ final class WifiDirect {
         String action = intent.getAction();
         if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION.equals(action)) {
             int state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1);
-            log("Wi-Fi Direct " + (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED ? "on" : "off"));
-            if (state != WifiP2pManager.WIFI_P2P_STATE_ENABLED) setNote("TURN ON WI-FI");
-            else if ("TURN ON WI-FI".equals(note())) setNote("");
+            p2pState = state;
+            boolean on = state == WifiP2pManager.WIFI_P2P_STATE_ENABLED;
+            log("Wi-Fi Direct " + (on ? "on" : "off"));
+            if (!on) {
+                setNote("TURN ON WI-FI");
+            } else {
+                if ("TURN ON WI-FI".equals(note())) setNote("");
+                // Wi-Fi was still coming up (the S24 took 80 s): the step that waited starts now.
+                if (waitingOn && role != Role.NONE) {
+                    waitingOn = false;
+                    log("start again now that it is on");
+                    if (role == Role.HOST) startHost();
+                    else startSearch();
+                }
+            }
         } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action) && manager != null && channel != null) {
             manager.requestConnectionInfo(channel, info -> {
                 if (info == null || !info.groupFormed) {
@@ -314,6 +389,10 @@ final class WifiDirect {
         @Override
         public void run() {
             if (manager == null || role == Role.NONE) return;
+            if (!p2pOn()) {
+                main.postDelayed(this, REFRESH_MS);     // nothing to discover while it is off
+                return;
+            }
             manager.discoverPeers(channel, quiet());
             if (role == Role.GUEST) {
                 manager.discoverServices(channel, new WifiP2pManager.ActionListener() {
@@ -349,6 +428,9 @@ final class WifiDirect {
         }
         ownGroup = false;
         groupOwner = "";
+        target = "";
+        waitingOn = false;
+        p2pState = -1;
         if (receiver != null) {
             try {
                 activity.unregisterReceiver(receiver);
@@ -387,6 +469,13 @@ final class WifiDirect {
 
             @Override
             public void onFailure(int reason) {
+                if (reason == WifiP2pManager.BUSY && p2pState != -1 && !p2pOn()) {
+                    // BUSY because Wi-Fi Direct is off: no point asking again until it is on.
+                    log(what + ": BUSY, Wi-Fi Direct off: waiting for it");
+                    waitingOn = true;
+                    setNote("TURN ON WI-FI");
+                    return;
+                }
                 log(what + ": " + reasonName(reason) + (reason == WifiP2pManager.BUSY && tries > 0 ? ", again" : ""));
                 if (reason == WifiP2pManager.BUSY && tries > 0) {
                     main.postDelayed(() -> call(what, tries - 1, call, then), RETRY_MS);
@@ -400,6 +489,10 @@ final class WifiDirect {
                 }
             }
         });
+    }
+
+    private boolean p2pOn() {
+        return p2pState == -1 || p2pState == WifiP2pManager.WIFI_P2P_STATE_ENABLED;
     }
 
     private static String reasonName(int reason) {
