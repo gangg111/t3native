@@ -11,8 +11,9 @@ as an archive, which it unpacks to %LOCALAPPDATA% and runs in a clean environmen
       remake/                       the remake's converter (tools/remake_import, tools/research),
                                     remake/content/texts_en.json and its licence
       t3native/tools/               build_apk, movies_from_disc, font_sheets_from_disc, arcade_overlay
-      template/                     base.apk (manifest, resources, classes.dex, a placeholder icon)
-                                    and lib/<abi>/libt3game.so, stripped
+      template/lan/, template/direct/  per APK (local Wi-Fi; Wi-Fi Direct from the wifi-direct
+                                    branch's worktree, DIRECT_TREE): base.apk (manifest, resources,
+                                    classes.dex, a placeholder icon) and lib/<abi>/libt3game.so, stripped
 
 No game data goes in: the template's icon is a placeholder (the builder draws the real one from
 the user's disc), and the folder is checked for the converter's output marker before it is done.
@@ -39,7 +40,9 @@ import build_apk
 ROOT = build_apk.ROOT
 REMAKE = build_apk.REMAKE.parent                    # the remake's checkout (REMAKE is its remake/)
 OUT = ROOT / "build/builder/Tekken3Builder"
-TEMPLATE = ROOT / "build/builder/template"
+TEMPLATE = ROOT / "build/builder/template"          # lan/ and direct/: the two APKs' templates
+# The wifi-direct branch's worktree (its Android builds make the Wi-Fi Direct APK's template).
+DIRECT_TREE = Path(os.environ.get("T3_DIRECT_TREE", ROOT.parent / "t3native-wd"))
 PYTHON = Path(sys.base_prefix)                      # the CPython the venv was made from
 SITE = Path(sys.prefix) / "Lib/site-packages"       # the venv's packages
 PACKAGES = ("numpy", "numpy.libs", "PIL", "xxhash")
@@ -76,25 +79,44 @@ def placeholder_icon(path: Path) -> None:
     Image.new("RGB", (192, 192), (24, 24, 32)).save(path)
 
 
-def template(out: Path) -> None:
-    """base.apk with a placeholder icon and classes.dex, and the stripped libraries."""
+def template(out: Path, tree: Path = ROOT) -> None:
+    """base.apk with a placeholder icon and classes.dex, and the stripped libraries, of the checkout
+    `tree` (its manifest, Java and CMake builds)."""
     if out.exists():
         shutil.rmtree(out)
     (out / "lib").mkdir(parents=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
+        # The resources of this checkout for every variant (the same files): a worktree lacks the
+        # launcher icon, which stays out of git; it is a placeholder here anyway.
         res = tmp / "res"
         shutil.copytree(ROOT / "android/res", res)
         for icon in res.glob("mipmap-*/ic_launcher.png"):
             placeholder_icon(icon)
-        base = build_apk.base_apk(tmp, res)
-        dex = build_apk.dex(ROOT / "android/java", tmp)
+        base = build_apk.base_apk(tmp, res, tree)
+        dex = build_apk.dex(tree / "android/java", tmp)
         with zipfile.ZipFile(base, "a") as z:
             z.write(dex, "classes.dex", zipfile.ZIP_DEFLATED)
         shutil.copy(base, out / "base.apk")
-        for abi in build_apk.ABIS if hasattr(build_apk, "ABIS") else ("arm64-v8a", "x86_64"):
+        for abi in ("arm64-v8a", "x86_64"):
             (out / "lib" / abi).mkdir()
-            shutil.copy(build_apk.stripped(abi, tmp), out / "lib" / abi / "libt3game.so")
+            shutil.copy(build_apk.stripped(abi, tmp, tree), out / "lib" / abi / "libt3game.so")
+
+
+def variant_trees() -> dict[str, Path]:
+    """The checkouts the two APKs are made from: this one (local Wi-Fi) and a worktree of the
+    wifi-direct branch with its own Android builds (`git worktree add ../t3native-wd wifi-direct`,
+    then cmake as in README.md)."""
+    direct = DIRECT_TREE
+    branch = subprocess.run(["git", "-C", str(direct), "branch", "--show-current"], capture_output=True,
+                            text=True).stdout.strip()
+    if branch != "wifi-direct":
+        raise SystemExit(f"{direct} is not a checkout of the wifi-direct branch ({branch or 'none'})")
+    for abi in ("arm64-v8a", "x86_64"):
+        lib = direct / f"build/android-{abi}/libt3game.so"
+        if not lib.is_file():
+            raise SystemExit(f"no {lib}: build the wifi-direct worktree first")
+    return {"lan": ROOT, "direct": direct}
 
 
 def python_runtime(out: Path) -> None:
@@ -180,7 +202,10 @@ def main() -> int:
     ap.add_argument("--template-only", action="store_true")
     args = ap.parse_args()
 
-    template(TEMPLATE)
+    if TEMPLATE.exists():
+        shutil.rmtree(TEMPLATE)
+    for variant, tree in variant_trees().items():
+        template(TEMPLATE / variant, tree)
     if args.template_only:
         return 0
     out = args.out

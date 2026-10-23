@@ -13,7 +13,7 @@
 The template and the libraries come from the developer (tools/make_builder.py) and hold no game
 data; everything taken from the discs stays on the user's computer.
 
-    python -m t3builder.pipeline --jp CUE [--usa CUE] [--arcade ZIP] --out FOLDER
+    python -m t3builder.pipeline --jp CUE [--usa CUE] [--arcade ZIP] --out FOLDER [--variant lan|direct]
 """
 from __future__ import annotations
 
@@ -41,7 +41,10 @@ HOME = Path(os.environ.get("T3B_HOME", APP_ROOT.parent))
 ABIS = ("arm64-v8a", "x86_64")
 MOVIE_VARIANT = "small"                                   # the Android variant (build_apk skips .large)
 ICON_SIZE = 192                                           # mipmap-xxxhdpi
-APK_NAME = "Tekken3.apk"
+# The APKs the builder makes: NETWORK MODE over the local Wi-Fi, or over Wi-Fi Direct (the
+# wifi-direct branch: its own package, so it installs beside the other). template/<variant>.
+VARIANTS = ("lan", "direct")
+APK_NAMES = {"lan": "Tekken3.apk", "direct": "Tekken3-WD.apk"}
 KEY_FILE = "key/signing_key.json"                       # next to the builder (HOME)
 PROGRESS = "@@"                                           # stdout lines the window reads as progress
 DONE = "done"                                             # the last one: "@@ done <minutes> <apk>"
@@ -128,19 +131,20 @@ def is_icon(name: str) -> bool:
     return name.startswith("res/mipmap") and Path(name).stem == "ic_launcher" and name.endswith(".png")
 
 
-def assemble(layout: Layout, imported: Path, out: Path, key: apk_sign.Key, icon: bytes) -> None:
+def assemble(layout: Layout, imported: Path, out: Path, key: apk_sign.Key, icon: bytes, variant: str = "lan") -> None:
+    template = layout.template / variant
     import build_apk  # noqa: PLC0415  (t3native/tools: the assets' names and compression)
     with tempfile.TemporaryDirectory() as tmp:
         unsigned = Path(tmp) / "unsigned.apk"
         z = apk_sign.AlignedZip(unsigned)
-        with zipfile.ZipFile(layout.template / "base.apk") as base:
+        with zipfile.ZipFile(template / "base.apk") as base:
             for info in base.infolist():
                 if info.filename.startswith("META-INF/"):
                     continue
                 data = icon if is_icon(info.filename) else base.read(info)
                 z.write_bytes(info.filename, data, info.compress_type)
         for abi in ABIS:
-            z.write_file(f"lib/{abi}/libt3game.so", layout.template / f"lib/{abi}/libt3game.so", zipfile.ZIP_STORED)
+            z.write_file(f"lib/{abi}/libt3game.so", template / f"lib/{abi}/libt3game.so", zipfile.ZIP_STORED)
         entries = build_apk.asset_entries(imported, layout.remake / "remake/content/texts_en.json", True)
         for name, path in entries:
             z.write_file(name, path, build_apk.compression(name))
@@ -153,7 +157,8 @@ def assemble(layout: Layout, imported: Path, out: Path, key: apk_sign.Key, icon:
     log.info(t("apk_done", files=len(entries), size=f"{out.stat().st_size / 1e6:.1f}"))
 
 
-def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout: Layout | None = None) -> Path:
+def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout: Layout | None = None,
+          variant: str = "lan") -> Path:
     layout = layout or Layout.detect()
     import_paths(layout)
     import arcade_overlay  # noqa: PLC0415
@@ -200,8 +205,8 @@ def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout
     step += 1
     progress(step, total, t("s_apk"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    apk = out_dir / APK_NAME
-    assemble(layout, imported, apk, key, make_icon(imported))
+    apk = out_dir / APK_NAMES[variant]
+    assemble(layout, imported, apk, key, make_icon(imported), variant)
     print(f"{PROGRESS} {DONE} {(time.time() - start) / 60:.1f} {apk}", flush=True)
     return apk
 
@@ -214,10 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--arcade", type=Path, help="MAME's tekken3 ROM set (.zip)")
     ap.add_argument("--out", type=Path, required=True, help="the folder the APK is written to")
     ap.add_argument("--lang", default="en", help="the language of the progress and the errors (en, pl)")
+    ap.add_argument("--variant", default="lan", choices=VARIANTS, help="NETWORK MODE over the local Wi-Fi or Wi-Fi Direct")
     args = ap.parse_args(argv)
     set_language(args.lang)
     try:
-        build(args.jp, args.usa, args.arcade, args.out)
+        build(args.jp, args.usa, args.arcade, args.out, variant=args.variant)
     except Exception as e:  # noqa: BLE001  (the window shows the reason; the trace goes to the log)
         log.exception(t("error", error=e))
         return 1

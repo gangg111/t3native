@@ -14,5 +14,7 @@ void error(const std::string& message);
 // Every message from here on is also appended to the file at `path` (the file is started anew),
 // for reading a device's log without adb (Android: the app's external files folder).
 void to_file(const std::string& path);
+// Every message from here on is also given to `listener` (on the thread that logs it; nullptr: none).
+void tap(void (*listener)(const std::string& message));
 
 }  // namespace t3::Log

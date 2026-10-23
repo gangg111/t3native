@@ -87,20 +87,20 @@ def run(*cmd, env: dict | None = None) -> None:
     subprocess.run([str(c) for c in cmd], check=True, env=env)
 
 
-def base_apk(tmp: Path, res_dir: Path = ROOT / "android/res") -> Path:
-    """The manifest and the resources linked by aapt2 into `tmp/base.apk`."""
+def base_apk(tmp: Path, res_dir: Path = ROOT / "android/res", tree: Path = ROOT) -> Path:
+    """The manifest (of the checkout `tree`) and the resources linked by aapt2 into `tmp/base.apk`."""
     res = tmp / "res.zip"
     run(BUILD_TOOLS / "aapt2.exe", "compile", "-o", res, "--dir", res_dir)
     base = tmp / "base.apk"
     run(BUILD_TOOLS / "aapt2.exe", "link", "-o", base, "-I", PLATFORM_JAR,
-        "--manifest", ROOT / "android/AndroidManifest.xml", res)
+        "--manifest", tree / "android/AndroidManifest.xml", res)
     return base
 
 
-def stripped(abi: str, tmp: Path) -> Path:
-    """The CMake build's libt3game.so of `abi` without its symbols."""
+def stripped(abi: str, tmp: Path, tree: Path = ROOT) -> Path:
+    """The CMake build's libt3game.so of `abi` (in the checkout `tree`) without its symbols."""
     out = tmp / f"libt3game-{abi}.so"
-    run(STRIP, "--strip-unneeded", "-o", out, ROOT / f"build/android-{abi}/libt3game.so")
+    run(STRIP, "--strip-unneeded", "-o", out, tree / f"build/android-{abi}/libt3game.so")
     return out
 
 

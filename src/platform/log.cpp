@@ -13,6 +13,7 @@ namespace t3::Log {
 namespace {
 std::mutex g_file_mutex;
 std::FILE* g_file = nullptr;
+void (*g_tap)(const std::string&) = nullptr;
 
 // The copy in the log file: a time stamp, the level, the message (flushed: a crash keeps it).
 void to_log_file(const char* tag, const std::string& message) {
@@ -25,16 +26,22 @@ void to_log_file(const char* tag, const std::string& message) {
     std::fflush(g_file);
 }
 
+void to_tap(const std::string& message) {
+    if (g_tap) g_tap(message);
+}
+
 #ifdef __ANDROID__
 void put(int level, const char* tag, const std::string& message) {
     __android_log_write(level, "t3native", message.c_str());
     to_log_file(tag, message);
+    to_tap(message);
 }
 constexpr int DEBUG = ANDROID_LOG_DEBUG, INFO = ANDROID_LOG_INFO, WARN = ANDROID_LOG_WARN, ERROR = ANDROID_LOG_ERROR;
 #else
 void put(int, const char* tag, const std::string& message) {
     std::fprintf(stderr, "[%s] %s\n", tag, message.c_str());
     to_log_file(tag, message);
+    to_tap(message);
 }
 constexpr int DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3;
 #endif
@@ -52,5 +59,7 @@ void to_file(const std::string& path) {
     if (g_file) std::fclose(g_file);
     g_file = std::fopen(path.c_str(), "w");
 }
+
+void tap(void (*listener)(const std::string& message)) { g_tap = listener; }
 
 }  // namespace t3::Log
