@@ -52,6 +52,24 @@ def test_encode_mpeg1_mp2(tmp_path):
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg is not on the PATH")
+def test_quality_1_is_finer_than_2(tmp_path):
+    # Noisy frames (flat colour compresses the same at any quantiser).
+    import random
+    rnd = random.Random(7)
+    for i in range(10):
+        Image.frombytes("RGB", (64, 48), bytes(rnd.randrange(256) for _ in range(64 * 48 * 3))).save(tmp_path / f"grid_{i:06d}.png")
+    _folder(tmp_path, frames=0)   # the sound only
+    sizes = {}
+    for q in (1, 2):
+        dest = tmp_path / f"q{q}.mpg"
+        movies_from_disc.encode(tmp_path, dest, q)
+        sizes[q] = dest.stat().st_size
+    # source: ffmpeg's mpeg1video clamps -q:v 1 to its default qmin 2 (byte-identical files) unless
+    # -qmin 1 is given; measured on title_0: q1 30.6 MB against q2 17.7 MB
+    assert sizes[1] > sizes[2] * 1.1
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg is not on the PATH")
 def test_check_counts_frames(tmp_path):
     folder = _folder(tmp_path, frames=30, seconds=1.0)
     dest = tmp_path / "m.mpg"
