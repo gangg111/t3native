@@ -291,8 +291,12 @@ public class GameActivity extends NativeActivity {
             // Not readable on this phone: the model below.
         }
         if (name == null || name.trim().isEmpty()) name = Build.MODEL;
+        // Letters with marks become plain ones (a Polish "URZADZENIE" read "URZDZENIE"): the marks split
+        // off and dropped, the L with a stroke (which has none to split) by hand.
+        String upper = name.toUpperCase(Locale.ROOT).replace('Ł', 'L');
+        upper = java.text.Normalizer.normalize(upper, java.text.Normalizer.Form.NFD);
         StringBuilder s = new StringBuilder();
-        for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
+        for (char c : upper.toCharArray()) {
             // The game's font has no underscore ("sdk_gphone64" drew as "SDK?GPHONE64"): a space.
             if (c == '_') s.append(' ');
             else if (c >= 32 && c < 127) s.append(c);
