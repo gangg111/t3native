@@ -356,7 +356,10 @@ bool TouchControls::press(gd::Int index, gfx::Vec2 at) {
     if (c != nullptr) {
         _fingers.set(index, Finger{false, gfx::Vec2(), c, second});
         _landed(c);
-    } else if (has_point(_stick_zone, at)) {
+    } else if (has_point(_stick_zone, at) &&
+               (!dpad || distance(at, _stick_hint) <= DPAD_PRESS_REACH * STICK_RADIUS * _unit * _stick_scale)) {
+        // Native: the D-pad takes a finger that lands on it (its arms' reach and a little), not one
+        // anywhere in the half of the screen the stick takes.
         if (!is_inf(_stick_origin)) return true;
         _fingers.set(index, Finger{true, at, nullptr});
         _stick_origin = dpad ? _stick_hint : at;
@@ -459,6 +462,16 @@ bool TouchControls::pair_at(gfx::Vec2 at, gd::Ref<Control2>& a, gd::Ref<Control2
 // The stick's direction bits for an offset from its origin.
 gd::Int TouchControls::stick_bits(gfx::Vec2 offset) const {
     if (length(offset) < DEAD_ZONE * _unit * _stick_scale) return 0;
+    if (dpad) {
+        // Native: the D-pad lights two arms only between them (DPAD_DIAGONAL either side of the
+        // diagonal), one arm in the wider rest, as a finger on the PlayStation's cross.
+        float ax = std::fabs(offset.x), ay = std::fabs(offset.y);
+        float slope = std::tan(TAU / 8.0f - DPAD_DIAGONAL);
+        gd::Int b = 0;
+        if (ax >= ay * slope) b |= offset.x > 0 ? PadState::RIGHT : PadState::LEFT;
+        if (ay >= ax * slope) b |= offset.y > 0 ? PadState::DOWN : PadState::UP;
+        return b;
+    }
     gd::Int sector = gd::posmod(static_cast<gd::Int>(std::llround(std::atan2(offset.y, offset.x) / (TAU / 8.0f))), 8);
     return DIRECTIONS[sector];
 }

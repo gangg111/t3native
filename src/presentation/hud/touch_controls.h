@@ -62,6 +62,8 @@ public:
     static constexpr float DPAD_LINE = 70.0f / 750.0f;
     static constexpr float DPAD_ROUND = 1.6f;        // the corners' outer radius, in outline widths
     static constexpr int DPAD_ARC = 6;               // pieces of each corner's arc
+    static constexpr float DPAD_PRESS_REACH = 1.2f;  // native: a finger lands on the D-pad within this many arms
+    static constexpr float DPAD_DIAGONAL = 0.2617994f;   // native: 15 degrees (radians) either side of a diagonal light two arms
     static constexpr float BUTTON_RADIUS = 0.78f;
     static constexpr float BUTTON_SPREAD = 1.35f;
     static constexpr float HIT_SLACK = 1.25f;        // a round button takes touches this far out (of its radius)
