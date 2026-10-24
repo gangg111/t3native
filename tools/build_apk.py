@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -87,13 +88,18 @@ def run(*cmd, env: dict | None = None) -> None:
     subprocess.run([str(c) for c in cmd], check=True, env=env)
 
 
-def base_apk(tmp: Path, res_dir: Path = ROOT / "android/res", tree: Path = ROOT) -> Path:
-    """The manifest (of the checkout `tree`) and the resources linked by aapt2 into `tmp/base.apk`."""
+def base_apk(tmp: Path, res_dir: Path = ROOT / "android/res", tree: Path = ROOT, label: str | None = None) -> Path:
+    """The manifest (of the checkout `tree`) and the resources linked by aapt2 into `tmp/base.apk`;
+    `label`, when given, in place of every android:label of the manifest (the app's name)."""
     res = tmp / "res.zip"
     run(BUILD_TOOLS / "aapt2.exe", "compile", "-o", res, "--dir", res_dir)
+    manifest = tree / "android/AndroidManifest.xml"
+    if label is not None:
+        text = re.sub(r'android:label="[^"]*"', f'android:label="{label}"', manifest.read_text(encoding="utf-8"))
+        manifest = tmp / "AndroidManifest.xml"
+        manifest.write_text(text, encoding="utf-8")
     base = tmp / "base.apk"
-    run(BUILD_TOOLS / "aapt2.exe", "link", "-o", base, "-I", PLATFORM_JAR,
-        "--manifest", tree / "android/AndroidManifest.xml", res)
+    run(BUILD_TOOLS / "aapt2.exe", "link", "-o", base, "-I", PLATFORM_JAR, "--manifest", manifest, res)
     return base
 
 
