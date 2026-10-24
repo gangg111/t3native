@@ -236,6 +236,11 @@ void TouchControls::layout() {
     gfx::Vec2 shoulder = SHOULDER_SIZE * u;
     // Layout edit: every shoulder button can be placed while editing.
     gd::Int shown = editing ? (PadState::L1 | PadState::L2 | PadState::R1 | PadState::R2) : shoulders;
+    // Native: also those the edit changed or showed (SHOW), though the key configuration gives none.
+    for (gd::Int bit : {PadState::L1, PadState::L2, PadState::R1, PadState::R2}) {
+        const std::string& name = PadState::NAMES.at(bit);
+        if (remap_of(name) != nullptr || forced_shown.count(name) != 0) shown |= bit;
+    }
     // Over Triangle, their touch areas clear of its own (a rectangle's touch is taken first).
     float y = centre.y - (BUTTON_SPREAD + BUTTON_RADIUS * HIT_SLACK + RECT_SLACK + GAP / 2.0f) * u - shoulder.y;
     for (gd::Int side = 0; side < 2; ++side) {
@@ -266,6 +271,17 @@ void TouchControls::layout() {
     _new_rect = gfx::Rect2(gfx::Vec2(_reset_rect.position.x - GAP * u - system.x, row_y), system);
     _change_rect = gfx::Rect2(gfx::Vec2(_done_rect.end().x + GAP * u, row_y), system);
     _hide_rect = gfx::Rect2(gfx::Vec2(centre_of(area).x - system.x / 2.0f, step_y + system.y + GAP * u), system);
+    // Native: the standard buttons the edit changed press what they were given, under their names.
+    for (const auto& c : _controls) {
+        if (c->custom_id != 0) continue;
+        std::string key = control_key(*c);
+        if (const CustomButton* b = remap_of(key)) {
+            c->key = key;
+            c->custom_id = b->id;
+            c->bits = b->bits();
+            c->label = b->label.empty() ? default_label(b->steps) : b->label;
+        }
+    }
     _apply_placements(area);
     if (!editing && !hidden.empty()) {   // Layout edit: the controls the player hid
         gd::Arr<gd::Ref<Control2>> kept;
@@ -629,7 +645,7 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
             if (held || key == selected) {
                 canvas.draw_rect(grow(gfx::Rect2(centre - half, half * 2.0f), 3.0f), gfx::Color(1, 1, 1, held ? 0.6f : 0.35f), false, 1.0f);
             }
-            if (hidden.count(key) != 0) {   // hidden outside the edit: dimmed, OFF on it
+            if (off_in_edit(key)) {   // off outside the edit: dimmed, OFF on it
                 canvas.draw_rect(gfx::Rect2(centre - half, half * 2.0f), gfx::Color(0, 0, 0, 0.55f));
                 _label(canvas, "OFF", centre, 0.45f * u, PRESSED_ALPHA);
             }
@@ -646,12 +662,12 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
         _draw_rect_button(canvas, _reset_rect, "RESET", false);
         _draw_rect_button(canvas, _done_rect, "DONE", false);
         if (static_cast<gd::Int>(custom.size()) < MAX_CUSTOM) _draw_rect_button(canvas, _new_rect, "ADD", false);
-        if (selected.rfind("Button ", 0) == 0) _draw_rect_button(canvas, _change_rect, "EDIT", false);
+        if (selected.rfind("Button ", 0) == 0 || remappable(selected)) _draw_rect_button(canvas, _change_rect, "EDIT", false);
         gfx::Vec2 px;
         if (!selected.empty() && size_px(selected, px)) {
             _draw_rect_button(canvas, _minus_rect, "-", false);
             _draw_rect_button(canvas, _plus_rect, "+", false);
-            _draw_rect_button(canvas, _hide_rect, hidden.count(selected) != 0 ? "SHOW" : "HIDE", false);
+            if (hideable(selected)) _draw_rect_button(canvas, _hide_rect, off_in_edit(selected) ? "SHOW" : "HIDE", false);
             float mid = (_minus_rect.end().x + _plus_rect.position.x) / 2.0f;
             float room = _plus_rect.position.x - _minus_rect.end().x - GAP * u;
             std::string name = selected;
@@ -678,6 +694,7 @@ void TouchControls::_label(gfx::Canvas& canvas, const std::string& text, gfx::Ve
 // Layout edit --------------------------------------------------------------------------------------
 
 std::string TouchControls::control_key(const Control2& c) {
+    if (!c.key.empty()) return c.key;   // a changed standard button keeps its name
     if (c.custom_id != 0) return "Button " + std::to_string(c.custom_id);
     if (PadState::NAMES.has(c.bits)) return PadState::NAMES.at(c.bits);
     return "Macro " + c.label;
@@ -755,7 +772,54 @@ const TouchControls::CustomButton* TouchControls::custom_button(gd::Int id) cons
     for (const CustomButton& b : custom) {
         if (b.id == id) return &b;
     }
+    for (const CustomButton& b : remaps) {
+        if (b.id == id) return &b;
+    }
     return nullptr;
+}
+
+const TouchControls::CustomButton* TouchControls::remap_of(const std::string& key) const {
+    for (const CustomButton& b : remaps) {
+        if (b.key == key) return &b;
+    }
+    return nullptr;
+}
+
+bool TouchControls::remappable(const std::string& key) {
+    for (gd::Int bit : {PadState::TRIANGLE, PadState::CIRCLE, PadState::CROSS, PadState::SQUARE, PadState::L1, PadState::L2,
+                        PadState::R1, PadState::R2}) {
+        if (PadState::NAMES.at(bit) == key) return true;
+    }
+    return false;
+}
+
+bool TouchControls::hideable(const std::string& key) { return key != STICK_KEY && key != PadState::NAMES.at(PadState::CROSS); }
+
+bool TouchControls::off_in_edit(const std::string& key) const {
+    if (hidden.count(key) != 0) return true;
+    for (gd::Int bit : {PadState::L1, PadState::L2, PadState::R1, PadState::R2}) {
+        if (PadState::NAMES.at(bit) == key) return (shoulders & bit) == 0 && remap_of(key) == nullptr && forced_shown.count(key) == 0;
+    }
+    return false;
+}
+
+void TouchControls::open_remap(const std::string& key) {
+    if (!remappable(key)) return;
+    Wizard w;
+    w.key = key;
+    if (const CustomButton* b = remap_of(key)) {
+        w.id = b->id;
+        w.steps = b->steps;
+        w.gap = b->gap;
+        w.label = b->label;
+    } else {
+        for (const auto& [bit, name] : PadState::NAMES) {
+            if (name == key) w.steps = {bit};
+        }
+    }
+    _edit_fingers.clear();
+    _pinch.reset();
+    wizard = w;
 }
 
 // Wizard ---------------------------------------------------------------------------------------------
@@ -887,6 +951,14 @@ bool TouchControls::_wizard_pointer(gfx::Vec2 at) {
         wizard.reset();
         return true;
     }
+    if (!wizard->key.empty() && wizard->id != 0 && has_point(r.remove, at)) {
+        // DEFAULT: the standard button as the game has it again.
+        std::string key = wizard->key;
+        remaps.erase(std::remove_if(remaps.begin(), remaps.end(), [&key](const CustomButton& b) { return b.key == key; }), remaps.end());
+        wizard.reset();
+        layout();
+        return true;
+    }
     if (wizard->id != 0 && has_point(r.remove, at)) {
         gd::Int id = wizard->id;
         custom.erase(std::remove_if(custom.begin(), custom.end(), [id](const CustomButton& b) { return b.id == id; }), custom.end());
@@ -895,6 +967,26 @@ bool TouchControls::_wizard_pointer(gfx::Vec2 at) {
         shared.erase(key);
         placements.erase(key);
         if (selected == key) selected.clear();
+        wizard.reset();
+        layout();
+        return true;
+    }
+    if (has_point(r.ok, at) && wizard->complete() && !wizard->key.empty()) {
+        // A standard button's remap: replaced, or added with the next free negative id.
+        std::string key = wizard->key;
+        gd::Int id = wizard->id;
+        if (id == 0) {
+            for (const CustomButton& b : remaps) id = std::min(id, b.id);
+            id -= 1;
+            CustomButton b{id, wizard->steps, wizard->gap, wizard->label};
+            b.key = key;
+            remaps.push_back(b);
+        } else {
+            for (CustomButton& b : remaps) {
+                if (b.id == id) b.steps = wizard->steps, b.gap = wizard->gap, b.label = wizard->label;
+            }
+        }
+        selected = key;
         wizard.reset();
         layout();
         return true;
@@ -925,7 +1017,7 @@ void TouchControls::_draw_wizard(gfx::Canvas& canvas) {
     canvas.draw_rect(r.panel, gfx::Color(0.08f, 0.08f, 0.1f, 0.96f));
     canvas.draw_rect(r.panel, with_alpha(OUTLINE, PRESSED_ALPHA), false, 2.0f);
     float k = r.cancel.size.y / (SYSTEM_SIZE.y * u);
-    _label(canvas, wizard->id == 0 ? "NEW BUTTON" : "EDIT BUTTON", gfx::Vec2(centre_of(r.panel).x, r.panel.position.y + 0.65f * u * k),
+    _label(canvas, !wizard->key.empty() ? "EDIT " + wizard->key : wizard->id == 0 ? "NEW BUTTON" : "EDIT BUTTON", gfx::Vec2(centre_of(r.panel).x, r.panel.position.y + 0.65f * u * k),
            0.45f * u * k, PRESSED_ALPHA);
     const Wizard& w = *wizard;
     gd::Int step_bits = w.steps[static_cast<size_t>(w.step)];
@@ -971,7 +1063,7 @@ void TouchControls::_draw_wizard(gfx::Canvas& canvas) {
     if (nw > n.size.x * 0.95f) nh *= n.size.x * 0.95f / nw;
     _label(canvas, shown, centre_of(n), nh, w.label.empty() ? ALPHA * 0.8f : PRESSED_ALPHA);
     _draw_rect_button(canvas, r.cancel, "CANCEL", false);
-    if (w.id != 0) _draw_rect_button(canvas, r.remove, "DELETE", false);
+    if (w.id != 0) _draw_rect_button(canvas, r.remove, w.key.empty() ? "DELETE" : "DEFAULT", false);
     if (w.complete()) _draw_rect_button(canvas, r.ok, "OK", false);
 }
 
@@ -1059,6 +1151,7 @@ void TouchControls::finish_edit() {
 void TouchControls::reset_layout() {
     placements.clear();
     hidden.clear();
+    forced_shown.clear();
     _store_screen();
     _edit_fingers.clear();
     _pinch.reset();
@@ -1145,12 +1238,42 @@ bool TouchControls::parse_layout(const std::string& text) {
             if (static_cast<gd::Int>(custom.size()) == MAX_CUSTOM) break;
         }
     }
-    // The hidden controls: ["L1", "Stick", ...].
+    // The hidden controls: ["L1", "Stick", ...]; the shoulders shown with no action: ["R1"].
     hidden.clear();
+    forced_shown.clear();
     const gd::Json& off = root.get("hidden");
     if (off.is_array()) {
         for (gd::Int i = 0; i < off.size(); ++i) {
-            if (off[i].is_string()) hidden.insert(off[i].str());
+            if (off[i].is_string() && hideable(off[i].str())) hidden.insert(off[i].str());
+        }
+    }
+    const gd::Json& on = root.get("shown");
+    if (on.is_array()) {
+        for (gd::Int i = 0; i < on.size(); ++i) {
+            if (on[i].is_string()) forced_shown.insert(on[i].str());
+        }
+    }
+    // The changed standard buttons: [{"key": "L1", "steps": [96], "gap": 8, "label": "1+2"}, ...].
+    const gd::Json& changed = root.get("remaps");
+    if (changed.is_array()) {
+        remaps.clear();
+        gd::Int allowed = 0;
+        for (gd::Int bit : WIZARD_BUTTONS) allowed |= bit;
+        for (gd::Int i = 0; i < changed.size(); ++i) {
+            const gd::Json& b = changed[i];
+            if (!b.is_object() || !b.get("key").is_string() || !b.get("steps").is_array()) continue;
+            std::string key = b.get("key").str();
+            if (!remappable(key) || remap_of(key) != nullptr) continue;
+            std::vector<gd::Int> steps;
+            const gd::Json& st = b.get("steps");
+            for (gd::Int j = 0; j < st.size() && j < MAX_STEPS; ++j) {
+                if (st[j].is_number()) steps.push_back(static_cast<gd::Int>(st[j].num()) & allowed);
+            }
+            if (steps.empty() || std::find(steps.begin(), steps.end(), gd::Int(0)) != steps.end()) continue;
+            gd::Int gap = b.get("gap").is_number() ? std::clamp(static_cast<gd::Int>(b.get("gap").num()), MIN_GAP, MAX_GAP) : DEFAULT_GAP;
+            CustomButton rb{-static_cast<gd::Int>(remaps.size()) - 1, steps, gap, b.get("label").is_string() ? b.get("label").str() : ""};
+            rb.key = key;
+            remaps.push_back(rb);
         }
     }
     screens.clear();
@@ -1191,6 +1314,25 @@ std::string TouchControls::layout_json() const {
         gd::JsonValue off = gd::JsonValue::array();
         for (const std::string& key : hidden) off.append(key);
         root.set("hidden", off);
+    }
+    if (!forced_shown.empty()) {
+        gd::JsonValue on = gd::JsonValue::array();
+        for (const std::string& key : forced_shown) on.append(key);
+        root.set("shown", on);
+    }
+    if (!remaps.empty()) {
+        gd::JsonValue changed = gd::JsonValue::array();
+        for (const CustomButton& b : remaps) {
+            gd::JsonValue rec = gd::JsonValue::object();
+            rec.set("key", b.key);
+            gd::JsonValue steps = gd::JsonValue::array();
+            for (gd::Int st : b.steps) steps.append(st);
+            rec.set("steps", steps);
+            rec.set("gap", b.gap);
+            rec.set("label", b.label);
+            changed.append(rec);
+        }
+        root.set("remaps", changed);
     }
     if (!shared.is_empty()) root.set("controls", write_controls(shared));
     root.set("screens", by_screen);
@@ -1338,6 +1480,10 @@ bool TouchControls::_edit_pointer(PointerEvent kind, const Pointer& p) {
             open_wizard(std::atoll(selected.c_str() + 7));
             return true;
         }
+        if (remappable(selected) && has_point(_change_rect, at)) {
+            open_remap(selected);
+            return true;
+        }
         if (has_point(grow(_done_rect, RECT_SLACK * _unit), at)) {
             finish_edit();
             return true;
@@ -1350,9 +1496,14 @@ bool TouchControls::_edit_pointer(PointerEvent kind, const Pointer& p) {
             step_size(has_point(_plus_rect, at) ? 1.0f : -1.0f);
             return true;
         }
-        if (!selected.empty() && has_point(_hide_rect, at)) {
-            if (hidden.count(selected) != 0) hidden.erase(selected);
-            else hidden.insert(selected);
+        if (!selected.empty() && hideable(selected) && has_point(_hide_rect, at)) {
+            if (off_in_edit(selected)) {
+                hidden.erase(selected);
+                if (off_in_edit(selected)) forced_shown.insert(selected);   // a shoulder with no action
+            } else {
+                hidden.insert(selected);
+                forced_shown.erase(selected);
+            }
             return true;
         }
         _edit_fingers.erase(id);

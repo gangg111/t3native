@@ -491,36 +491,109 @@ T3_TEST(touch_controls, edit_sizes_in_pixels_and_one_pixel_steps) {
 }
 
 // The edit's HIDE / SHOW: a hidden control is gone outside the edit (no drawing, no touch), dimmed
-// in the edit, kept in the layout file, and RESET shows it again.
+// in the edit, kept in the layout file, and RESET shows it again. The stick and Cross cannot be
+// hidden (the user's rule: touch would have no way to move or to confirm).
 T3_TEST(touch_controls, edit_hides_and_shows_controls) {
     Touch f("none");
     TouchControls& tc = f.tc;
     tc.visible = true;
     tc.enter_edit();
     gfx::Vec2 hide = tc._hide_rect.position + tc._hide_rect.size * 0.5f;
+    auto tap = [&](gd::Int id, gfx::Vec2 at) {
+        tc.pointer(PointerEvent::DOWN, finger(id, at));
+        tc.pointer(PointerEvent::UP, finger(id, at));
+    };
+    gfx::Vec2 circle = centre_of(tc, PadState::CIRCLE);
+    tap(0, circle);
+    tap(1, hide);
+    t.expect(tc.hidden.count("Circle") == 1, "HIDE takes the selected Circle off");
+    t.expect(control_of(tc, PadState::CIRCLE) != nullptr, "still there in the edit (to be shown again)");
     gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
-    tc.pointer(PointerEvent::DOWN, finger(0, cross));
-    tc.pointer(PointerEvent::UP, finger(0, cross));
-    tc.pointer(PointerEvent::DOWN, finger(1, hide));
-    tc.pointer(PointerEvent::UP, finger(1, hide));
-    t.expect(tc.hidden.count("Cross") == 1, "HIDE takes the selected Cross off");
-    t.expect(control_of(tc, PadState::CROSS) != nullptr, "still there in the edit (to be shown again)");
+    tap(2, cross);
+    tap(3, hide);
+    t.expect(tc.hidden.count("Cross") == 0, "Cross cannot be hidden");
+    t.expect(!TouchControls::hideable(TouchControls::STICK_KEY), "nor the stick");
     tc.finish_edit();
-    t.expect(control_of(tc, PadState::CROSS) == nullptr, "gone outside the edit");
-    bool taken = tc.press(2, cross);
-    t.expect_equal(tc.bits & PadState::CROSS, gd::Int(0), "its place presses nothing");
-    if (taken) tc.release(2);
-    // source: by hand: the file lists it under "hidden"; a fresh reader hides it too
+    t.expect(control_of(tc, PadState::CIRCLE) == nullptr, "gone outside the edit");
+    bool taken = tc.press(4, circle);
+    t.expect_equal(tc.bits & PadState::CIRCLE, gd::Int(0), "its place presses nothing");
+    if (taken) tc.release(4);
+    // source: by hand: the file lists it under "hidden"; a fresh reader hides it too, and ignores
+    // a Cross or the stick listed there
     t.expect(tc.layout_json().find("\"hidden\"") != std::string::npos, "saved in the layout");
     Touch g("none");
     t.expect(g.tc.parse_layout(tc.layout_json()), "read back");
     g.tc.layout();
-    t.expect(control_of(g.tc, PadState::CROSS) == nullptr, "hidden after reading the file");
+    t.expect(control_of(g.tc, PadState::CIRCLE) == nullptr, "hidden after reading the file");
+    t.expect(g.tc.parse_layout("{\"version\": 2, \"hidden\": [\"Cross\", \"Stick\"], \"screens\": {}}"), "a file hiding Cross");
+    t.expect(g.tc.hidden.empty(), "Cross and the stick stay");
     tc.enter_edit();
     tc.reset_layout();
     t.expect(tc.hidden.empty(), "RESET shows every control");
     tc.finish_edit();
-    t.expect(control_of(tc, PadState::CROSS) != nullptr, "Cross back");
+    t.expect(control_of(tc, PadState::CIRCLE) != nullptr, "Circle back");
+}
+
+// EDIT on a standard button: it presses what the wizard gives it, keeps its name (place, HIDE),
+// is saved, and DEFAULT gives it back as the game has it.
+T3_TEST(touch_controls, edit_changes_standard_buttons) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.visible = true;
+    auto tap = [&](gd::Int id, gfx::Vec2 at) {
+        tc.pointer(PointerEvent::DOWN, finger(id, at));
+        tc.pointer(PointerEvent::UP, finger(id, at));
+    };
+    auto mid = [](const gfx::Rect2& r) { return r.position + r.size * 0.5f; };
+    tc.enter_edit();
+    gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
+    tap(0, cross);
+    tap(1, mid(tc._change_rect));
+    t.expect(tc.wizard.has_value() && tc.wizard->key == "Cross", "EDIT opens the wizard for Cross");
+    t.expect_equal(tc.wizard->steps[0], gd::Int(PadState::CROSS), "with what Cross presses now");
+    TouchControls::WizardRects w = tc.wizard_rects();
+    tap(2, mid(w.toggles[1]));   // Triangle too
+    tap(3, mid(w.ok));
+    t.expect(!tc.wizard.has_value() && tc.remap_of("Cross") != nullptr, "OK keeps the change");
+    tc.finish_edit();
+    // source: by hand: Cross now presses Cross + Triangle, still named Cross in the layout
+    t.expect(tc.press(4, cross), "Cross's place takes a finger");
+    t.expect_equal(tc.bits, gd::Int(PadState::CROSS | PadState::TRIANGLE), "Cross + Triangle");
+    tc.release(4);
+    t.expect(tc.layout_json().find("\"remaps\"") != std::string::npos, "saved");
+    Touch g("none");
+    t.expect(g.tc.parse_layout(tc.layout_json()), "read back");
+    t.expect(g.tc.remap_of("Cross") != nullptr && g.tc.remap_of("Cross")->bits() == (PadState::CROSS | PadState::TRIANGLE),
+             "the same change after reading");
+    tc.enter_edit();
+    tap(5, cross);
+    tap(6, mid(tc._change_rect));
+    tap(7, mid(tc.wizard_rects().remove));   // DEFAULT
+    t.expect(tc.remap_of("Cross") == nullptr, "DEFAULT drops the change");
+    tc.finish_edit();
+    t.expect(tc.press(8, cross) && tc.bits == PadState::CROSS, "Cross as the game has it");
+    tc.reset();
+}
+
+// A shoulder button with no action in the key configuration: OFF in the edit, SHOW puts it in the
+// game anyway (and a change from EDIT does too).
+T3_TEST(touch_controls, show_puts_shoulders_without_action) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.visible = true;
+    tc.set_shoulders(0);
+    tc.enter_edit();
+    t.expect(tc.off_in_edit("L1"), "L1 with no action: OFF in the edit");
+    gfx::Vec2 l1 = centre_of(tc, PadState::L1);
+    tc.pointer(PointerEvent::DOWN, finger(0, l1));
+    tc.pointer(PointerEvent::UP, finger(0, l1));
+    gfx::Vec2 hide = tc._hide_rect.position + tc._hide_rect.size * 0.5f;
+    tc.pointer(PointerEvent::DOWN, finger(1, hide));
+    tc.pointer(PointerEvent::UP, finger(1, hide));
+    t.expect(!tc.off_in_edit("L1"), "SHOW: on");
+    tc.finish_edit();
+    t.expect(control_of(tc, PadState::L1) != nullptr, "L1 in the game");
+    t.expect(control_of(tc, PadState::R1) == nullptr, "R1 (not shown) not");
 }
 
 // A foldable: each window size keeps its own layout; a version 1 file is used where none is saved.

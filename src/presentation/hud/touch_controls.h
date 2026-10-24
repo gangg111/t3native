@@ -107,6 +107,7 @@ public:
     public:
         gd::Int bits = 0;
         gd::Int custom_id = 0;               // a player's own button (Layout edit's ADD); 0: the game's
+        std::string key;                     // native: a changed standard button keeps its key ("Cross")
         gfx::Vec2 centre;
         float radius = 0.0f;
         gfx::Rect2 rect;
@@ -143,10 +144,16 @@ public:
         std::vector<gd::Int> steps{0};
         gd::Int gap = DEFAULT_GAP;
         std::string label;
+        std::string key;                     // native: a remap's standard button ("Cross", "L1"); empty: an own button
         gd::Int bits() const;                // every step's buttons
         bool combo() const { return steps.size() > 1; }
     };
     std::vector<CustomButton> custom;
+    // Native: the standard face and shoulder buttons the edit's EDIT changed (negative ids, `key`
+    // the button's: its place and HIDE stay under that name).
+    std::vector<CustomButton> remaps;
+    const CustomButton* remap_of(const std::string& key) const;
+    static bool remappable(const std::string& key);   // a face or shoulder button's key
     // The fighter of the touch controls (player 1) is on the right: forward is LEFT.
     std::function<bool()> facing_left;
     // A combo being played: the button and the steps since it started.
@@ -243,6 +250,14 @@ public:
     gfx::Rect2 _new_rect, _change_rect;      // ADD (a new button), EDIT (the selected own button)
     gfx::Rect2 _hide_rect;                   // HIDE / SHOW (the selected control) under the − + row
     std::set<std::string> hidden;            // control keys (STICK_KEY too) not shown outside the edit
+    // Shoulder buttons shown though the game's key configuration gives them no action (SHOW).
+    std::set<std::string> forced_shown;
+    // Whether a control is off outside the edit (hidden, or a shoulder button with no action).
+    bool off_in_edit(const std::string& key) const;
+    // Whether HIDE may take a control off: not the stick (or cross) nor Cross, without which touch
+    // has no way to move or to confirm.
+    static bool hideable(const std::string& key);
+    void open_remap(const std::string& key);   // EDIT on a standard button
 
     // The wizard of an own button: the pad buttons it holds (toggled), its name, OK / CANCEL / DELETE.
     static constexpr gd::Int MAX_CUSTOM = 8;
@@ -255,6 +270,7 @@ public:
         gd::Int step = 0;                    // the step the toggles show
         gd::Int gap = DEFAULT_GAP;
         std::string label;                   // empty: the steps' names ("1+3", "D+3+4", "1,1,2")
+        std::string key;                     // native: a standard button's remap ("Cross"); empty: an own button
         bool asking = false;                 // the name's text input is open
         bool complete() const;               // every step presses something
     };
