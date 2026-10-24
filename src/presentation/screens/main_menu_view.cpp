@@ -23,7 +23,16 @@ void MainMenuView::_draw() {
     black();
     image(title, 0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y));
     if (menu && menu->scroll == 0) _bars(menu->glow);
-    if (!footer.empty()) centred(footer, 1, footer_colour, static_cast<float>(CENTRE), static_cast<float>(FOOTER_Y));
+    if (!footer_items.empty()) {
+        float column = static_cast<float>(SCREEN_X) / static_cast<float>(footer_items.size());
+        for (size_t i = 0; i < footer_items.size(); ++i) {
+            float x = column * (static_cast<float>(i) + 0.5f);
+            centred(footer_items[i].label, 0, LABEL_COLOUR, x, static_cast<float>(FOOTER_Y - 0x10));
+            centred(footer_items[i].value, 1, footer_colour, x, static_cast<float>(FOOTER_Y));
+        }
+    } else if (!footer.empty()) {
+        centred(footer, 1, footer_colour, static_cast<float>(CENTRE), static_cast<float>(FOOTER_Y));
+    }
 }
 
 // The seven entries around the cursor.

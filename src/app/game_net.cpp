@@ -74,6 +74,7 @@ void GameApp::_net_frame(double now) {
     // What the pages and the session show.
     main_menu_view.page.clear();
     main_menu_view.footer.clear();
+    main_menu_view.footer_items.clear();
     main_menu_view.footer_colour = WHITE;
     net_banner.text.clear();
     bool menu_list = flow->state == GameFlow::State::MENU && flow->sub == 1;
@@ -103,14 +104,20 @@ void GameApp::_net_show_page() {
         case NetPage::HOSTING: {
             page = {"WAITING FOR PLAYER 2", Platform::device_name()};
             main_menu_view.page_cursor = 0;
-            // Every address player 2 may type (Wi-Fi and a hotspot of this phone at once: two).
+            // Every address player 2 may type (Wi-Fi and a hotspot of this phone at once: two), each
+            // named above it: 192.168.49.x is always Android's Wi-Fi Direct group, the rest a router's
+            // network (a hotspot of this phone too: it is the router then).
             std::vector<net::Address> mine = net::local_addresses();
-            std::string shown;
-            for (size_t i = 0; i < mine.size() && i < 2; ++i) shown += (i ? "  " : "") + mine[i].text();
-            main_menu_view.footer = mine.empty() ? (Platform::direct_supported() ? "WI-FI DIRECT" : "TURN ON WI-FI") : shown;
+            for (size_t i = 0; i < mine.size() && i < 2; ++i) {
+                bool direct = (mine[i].ip >> 8) == 0xC0A831u;   // 192.168.49
+                main_menu_view.footer_items.push_back({direct ? "WI-FI DIRECT" : "ROUTER", mine[i].text()});
+            }
+            if (mine.empty()) main_menu_view.footer = Platform::direct_supported() ? "WI-FI DIRECT" : "TURN ON WI-FI";
             main_menu_view.footer_colour = mine.empty() ? WHITE : GREEN;
             std::string note = Platform::direct_note();
             if (!note.empty()) {
+                // A Wi-Fi Direct step's note (ACCEPT ON PLAYER 1 PHONE, ...) in the addresses' place.
+                main_menu_view.footer_items.clear();
                 main_menu_view.footer = note;
                 main_menu_view.footer_colour = WHITE;
             }
