@@ -96,6 +96,8 @@ const gd::Dict<std::string, std::string>& english() {
         t.set("SETTING_INTERPOLATION", "Frame interpolation");
         t.set("SETTINGS_INTERPOLATION_HELP", "Smooth motion between the 60 Hz steps on faster displays; off shows each step as it is.");
         t.set("SETTING_FRAMING", "Beyond the scene");
+        t.set("SETTING_WIDE_SCREENS", "Menu background");
+        t.set("SETTINGS_WIDE_SCREENS_HELP", "Wide fills the whole window with the select screens' backgrounds; 4:3 keeps them in the original frame.");
         t.set("SETTING_STAGE_BACKDROPS", "Stage backdrops");
         t.set("SETTINGS_BACKDROPS_HELP", "Arcade draws the arcade version's polygonal scenery, sky and floor (from the MAME set given to the converter); PlayStation draws the home version's flat panoramas. Takes effect from the next stage.");
         t.set("SETTINGS_FRAMING_HELP", "What fills the window where the scene ends (wide or tall windows): the stage's clear colour or black bars.");

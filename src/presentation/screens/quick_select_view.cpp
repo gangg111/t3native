@@ -149,9 +149,12 @@ QuickSelectView::Vector3 QuickSelectView::Vector3::normalized() const {
 
 void QuickSelectView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>& game_ram, const gd::Ref<VramImage>& image) {
     setup_psx(hud_data, game_ram, image);
-    add_pass(gfx::Blend::SUB, [this] { _mode_picture(); });
-    add_pass(gfx::Blend::MIX, [this] { _stripes(); });
-    add_pass(gfx::Blend::ADD, [this] { backdrop(1, ram->u32(BACK_COLOURS + 4 + 8 * _mode())); });
+    // Native: the backdrop, the mode's picture, the banner and stripes and the glows are the
+    // background the wide mode widens; _front stays in the 4:3 box.
+    wide_background = true;
+    add_background_pass(gfx::Blend::SUB, [this] { _mode_picture(); });
+    add_background_pass(gfx::Blend::MIX, [this] { _stripes(); });
+    add_background_pass(gfx::Blend::ADD, [this] { backdrop(1, ram->u32(BACK_COLOURS + 4 + 8 * _mode())); });
     add_pass(gfx::Blend::MIX, [this] { _front(); });
 }
 
@@ -244,8 +247,12 @@ void QuickSelectView::_stripes() {
             fill(ram->u16(rec + 0x10), ram->s32(rec + 0x14), 0x90, 0x80, gfx::Color(0, 0, 0, 0.5f));
         }
     }
+    // Native: the wide mode repeats the banner and the stripes out to the window's edges.
+    gd::Int left = static_cast<gd::Int>(std::floor(wide_left())), right = static_cast<gd::Int>(std::ceil(wide_right()));
     gd::Int bx = _banner - BANNER_PERIOD;
-    while (bx < 0x170) {
+    if (widened())
+        while (bx > left) bx -= BANNER_PERIOD;
+    while (bx < std::max<gd::Int>(right, 0x170)) {
         text(ram->string(BANNER), 2, 6, bx, 0xCB);
         bx += BANNER_PERIOD;
     }
@@ -255,8 +262,10 @@ void QuickSelectView::_stripes() {
         gd::Int u = w & 0xFF;
         gd::Int v = (w >> 8) & 0xFF;
         gd::Int xx = x;
-        while (xx < 0x170) {
-            if (xx > -0x30) ft4(xx, 0x5F, 0x30, 0x50, u, v, 0x18, 0x28, w >> 16, 0x6E);
+        if (widened())
+            while (xx > left - 0x30) xx -= STRIPE_PERIOD;
+        while (xx < std::max<gd::Int>(right, 0x170)) {
+            if (xx > std::min<gd::Int>(left, 0) - 0x30) ft4(xx, 0x5F, 0x30, 0x50, u, v, 0x18, 0x28, w >> 16, 0x6E);
             xx += STRIPE_PERIOD;
         }
         x += 0x30;

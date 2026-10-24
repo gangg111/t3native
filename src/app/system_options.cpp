@@ -20,8 +20,10 @@ const char* const TITLES[] = {"SYSTEM OPTION", "GRAPHICS", "SOUND", "GAME", "CON
 // Native: the arcade version (stage_backdrops: the remake's backdrops, here the stages and the
 // fighters' models together) is VERSION, CONSOLE or ARCADE.
 const std::pair<const char*, const char*> LABELS[] = {
-    {"gameplay_fixes", "ORIGINAL BUGS"}, {"framing", "SCREEN EDGES"}, {"stage_backdrops", "VERSION"}};
-const std::pair<const char*, std::pair<const char*, const char*>> FLAG_VALUES[] = {{"gameplay_fixes", {"KEPT", "FIXED"}}};
+    {"gameplay_fixes", "ORIGINAL BUGS"}, {"framing", "SCREEN EDGES"}, {"stage_backdrops", "VERSION"},
+    {"wide_screens", "MENU BACKGROUND"}};
+const std::pair<const char*, std::pair<const char*, const char*>> FLAG_VALUES[] = {{"gameplay_fixes", {"KEPT", "FIXED"}},
+                                                                                     {"wide_screens", {"4:3", "WIDE"}}};
 const std::pair<const char*, std::pair<const char*, const char*>> CHOICE_NAMES[] = {
     {"stage_backdrops", {"playstation", "CONSOLE"}}, {"stage_backdrops", {"arcade", "ARCADE"}}};
 
@@ -65,7 +67,7 @@ std::vector<SystemOptions::Entry> SystemOptions::entries(gd::Int list) const {
             out.push_back(Entry{"CONTROLS", Kind::MENU, "", CONTROLS});
             break;
         case GRAPHICS:
-            for (const char* key : {"graphics", "texture_filter", "shading", "texture_pack", "interpolation", "framing", "fullscreen"}) {
+            for (const char* key : {"graphics", "texture_filter", "shading", "texture_pack", "interpolation", "framing", "wide_screens", "fullscreen"}) {
                 setting(key);
             }
             break;

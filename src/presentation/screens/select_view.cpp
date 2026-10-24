@@ -15,6 +15,9 @@ void SelectView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>&
     setup_psx(hud_data, game_ram, image);
     pictures_dir = screens_dir;
     reload_pictures();
+    // Native: the wide mode: _draw (the tiles) and the floor's gradient at the sides are background.
+    wide_background = true;
+    add_background_pass(gfx::Blend::MIX, [this] { _wide_floor(); });
     add_pass(gfx::Blend::ADD, [this] { _backlights(); });
     add_pass(gfx::Blend::MIX, [this] { _middle(); });
     add_texel_mask_pass([this] { _portraits(Bands::SHAPES); });
@@ -62,20 +65,23 @@ void SelectView::_background() {
     gd::Int h = 0x40 - frac;
     gd::Int row = 7 - ((v - 1) >> 6);
     gd::Int y = static_cast<gd::Int>(DISPLAY().position.y);   // DISPLAY is a Rect2i in the GDScript
+    // Native: the wide mode goes on with the tiles' columns out to the window's edges (the row's 8
+    // patterns repeat: column i at x = 0x30 i - 8, the first of the screen shown from texel 8).
+    gd::Int first = 0, last = 7;
+    if (widened()) {
+        first = static_cast<gd::Int>(std::floor((wide_left() + 8) / 0x30));
+        last = static_cast<gd::Int>(std::ceil((wide_right() + 8) / 0x30));
+    }
     while (y < gd::mini(0x155, limit)) {
         gd::Int pat = BG_ROWS + (row & 7) * 8;
-        gd::Int x = 0;
-        gd::Int du = 8;
-        gd::Int w = 0x28;
-        for (gd::Int i = 0; i < 8; ++i) {
-            gd::Int uv = ram->u32(BG_TILES + 4 * ram->u8(pat));
-            pat += 1;
-            uv += du;
+        for (gd::Int i = first; i <= last; ++i) {
+            bool cut = i == 0 && !widened();   // the screen's own first column: 0x28 wide from texel 8
+            gd::Int x = cut ? 0 : 0x30 * i - 8;
+            gd::Int w = cut ? 0x28 : 0x30;
+            gd::Int uv = ram->u32(BG_TILES + 4 * ram->u8(pat + gd::posmod(i, 8)));
+            uv += cut ? 8 : 0;
             uv += frac << 8;
             sprt(x, y, w, gd::mini(h, limit - y), uv & 0xFFFFFFFFLL, 0x18);
-            x += w;
-            w = 0x30;
-            du = 0;
         }
         y += h;
         h = 0x40;
@@ -120,6 +126,16 @@ void SelectView::_glowing() {
     if (!_shown()) return;
     _portraits(Bands::FADING);
     _sparks();
+}
+
+// Native: the wide mode: _pictures' gradient under the grid at the window's sides.
+void SelectView::_wide_floor() {
+    if (!_shown() || !widened()) return;
+    gd::Int c = ram->u32(CTX + 4) != 0 ? 0xD0 : 0;
+    float y0 = static_cast<float>(ram->s32(CTX + 0x128) + 0x10);
+    float h = static_cast<float>(SCREEN_Y) - y0;
+    gradient(wide_left(), y0, -wide_left(), h, gfx::Color::black(), gfx::Color::black(), psx(c), psx(c));
+    gradient(static_cast<float>(SCREEN_X), y0, wide_right() - SCREEN_X, h, gfx::Color::black(), gfx::Color::black(), psx(c), psx(c));
 }
 
 // FUN_80110154: the gradient under the grid, then the layout's static pictures over it.

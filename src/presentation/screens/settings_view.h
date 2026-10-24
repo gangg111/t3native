@@ -63,7 +63,7 @@ public:
         {"graphics", "SETTINGS_GRAPHICS_HELP"}, {"texture_filter", "SETTINGS_FILTER_HELP"},
         {"shading", "SETTINGS_SHADING_HELP"},
         {"texture_pack", "SETTINGS_PACK_HELP"}, {"interpolation", "SETTINGS_INTERPOLATION_HELP"},
-        {"framing", "SETTINGS_FRAMING_HELP"}, {"stage_backdrops", "SETTINGS_BACKDROPS_HELP"},
+        {"framing", "SETTINGS_FRAMING_HELP"}, {"wide_screens", "SETTINGS_WIDE_SCREENS_HELP"}, {"stage_backdrops", "SETTINGS_BACKDROPS_HELP"},
         // Native: no "touch_macros" (own buttons are made in the layout edit instead).
         {"vibration", ""}, {"touch_controls", "SETTINGS_TOUCH_HELP"},
         {"touch_size", "SETTINGS_TOUCH_SIZE_HELP"}, {"touch_layout", "SETTINGS_TOUCH_LAYOUT_HELP"},   // native: the layout edit

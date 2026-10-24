@@ -59,6 +59,18 @@ public:
     // A subtractive pass in which each opaque texel subtracts the vertex colour (a texture drawn
     // through a CLUT of white entries: texel_mask_sub.gdshader).
     void add_texel_mask_pass(std::function<void()> painter);
+    // Native: the wide mode (the select screens' backgrounds over the whole window, 21:9 too). On
+    // a canvas that takes it (`wide_background`: its `_draw` and the passes added with
+    // add_background_pass are background), those draw past the 4:3 box out to the window's edges,
+    // and everything else stays clipped to the box (what the original hides past its edges, a
+    // title sliding out, a bar sliding in, stays hidden).
+    bool wide = false;
+    bool wide_background = false;
+    void add_background_pass(gfx::Blend blend, std::function<void()> painter);
+    // The window's left and right edges in screen x (0 and SCREEN_X but in the wide mode).
+    float wide_left() const;
+    float wide_right() const;
+    bool widened() const { return wide && wide_background; }
     void redraw() { box = layout_box(); }
     void queue_redraw() {}
 
@@ -114,6 +126,7 @@ private:
         std::function<void()> painter;
         gfx::Rect2 clip;
         bool texel_mask;
+        bool background = false;
     };
     std::vector<Pass> _passes;
 };

@@ -19,11 +19,16 @@ void ScreenCanvas::draw(gfx::Canvas& canvas, gfx::Vec2 window) {
     canvas.set_clip(gfx::Rect2());
     canvas.set_texel_mask(false);
     _draw();
+    // Native: the wide mode's foreground stays in the 4:3 box (black() and the background passes
+    // draw past it).
+    bool widened_now = widened();
     for (const Pass& p : _passes) {
         begin();
         canvas.set_blend(p.blend);
         canvas.set_texel_mask(p.texel_mask);
-        canvas.set_clip(p.clip.has_area() ? r(p.clip.position.x, p.clip.position.y, p.clip.size.x, p.clip.size.y) : gfx::Rect2());
+        gfx::Rect2 clip = p.clip.has_area() ? r(p.clip.position.x, p.clip.position.y, p.clip.size.x, p.clip.size.y) : gfx::Rect2();
+        if (widened_now && !p.background && !clip.has_area()) clip = r(0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y));
+        canvas.set_clip(clip);
         p.painter();
     }
     canvas.set_blend(gfx::Blend::MIX);
@@ -39,6 +44,20 @@ void ScreenCanvas::add_pass(gfx::Blend blend, std::function<void()> painter, gfx
 
 void ScreenCanvas::add_texel_mask_pass(std::function<void()> painter) {
     _passes.push_back({gfx::Blend::SUB, std::move(painter), gfx::Rect2(), true});
+}
+
+void ScreenCanvas::add_background_pass(gfx::Blend blend, std::function<void()> painter) {
+    _passes.push_back({blend, std::move(painter), gfx::Rect2(), false, true});
+}
+
+float ScreenCanvas::wide_left() const {
+    if (!widened() || box.size.x <= 0) return 0.0f;
+    return -box.position.x * static_cast<float>(SCREEN_X) / box.size.x;
+}
+
+float ScreenCanvas::wide_right() const {
+    if (!widened() || box.size.x <= 0) return static_cast<float>(SCREEN_X);
+    return (size.x - box.position.x) * static_cast<float>(SCREEN_X) / box.size.x;
 }
 
 gfx::Vec2 ScreenCanvas::pt(float x, float y) const { return ScreenBox::point(box, SCREEN(), x, y); }

@@ -1,5 +1,7 @@
 #include "presentation/screens/psx_canvas.h"
 
+#include <utility>
+
 #include "content/texture_packs.h"
 #include "core/game/game_progress.h"
 #include "core/math/fx.h"
@@ -100,6 +102,22 @@ void PsxCanvas::backdrop(gd::Int kind, gd::Int colour) {
             v[i] = gfx::Vec2(static_cast<float>(Fx::s16(xy & 0xFFFF)), static_cast<float>(Fx::s16(xy >> 16)));
         }
         quad(v[0], v[1], v[2], v[3], c[0], c[1], c[2], c[3]);
+        // Native: the wide mode: a quad that meets the screen's left or right edge goes on to the
+        // window's edge in that edge's colours (its two corners there: the title band's ends,
+        // the floor's full-width gradients).
+        if (widened()) {
+            for (float edge : {0.0f, static_cast<float>(SCREEN_X)}) {
+                int at[2], n = 0;
+                for (int i = 0; i < 4 && n < 2; ++i)
+                    if (v[i].x == edge) at[n++] = i;
+                if (n < 2) continue;
+                if (v[at[0]].y > v[at[1]].y) std::swap(at[0], at[1]);
+                float far = edge == 0.0f ? wide_left() : wide_right();
+                gfx::Vec2 top(edge, v[at[0]].y), bottom(edge, v[at[1]].y);
+                gfx::Vec2 top_far(far, top.y), bottom_far(far, bottom.y);
+                quad(top_far, top, bottom_far, bottom, c[at[0]], c[at[0]], c[at[1]], c[at[1]]);
+            }
+        }
     }
 }
 

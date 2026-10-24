@@ -56,6 +56,7 @@ public:
     // The layout's pictures, the grid of faces, the name plates, the time limit, the NEW arrows and
     // the portraits' fully bright bands.
     void _middle();
+    void _wide_floor();
     // The portraits' fading bands and the sparks (added).
     void _glowing();
     // FUN_80110154: the gradient under the grid, then the layout's static pictures over it.
