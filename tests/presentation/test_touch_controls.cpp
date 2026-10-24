@@ -748,6 +748,33 @@ T3_TEST(touch_controls, dpad_points_from_its_centre) {
     tc.reset();
 }
 
+// The D-pad: two arms only within 15 degrees of a diagonal, and only a finger landing on the pad.
+T3_TEST(touch_controls, dpad_diagonals_and_reach) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.dpad = true;
+    float unit = tc._unit;
+    auto at = [&](float degrees) {
+        float a = degrees * TAU / 360.0f;
+        return gfx::Vec2(std::cos(a), std::sin(a)) * unit;   // y down: positive angles point down
+    };
+    // source: by hand: the diagonal band is 30-60 degrees from an axis (45 +- 15)
+    t.expect_equal(tc.stick_bits(at(45)), gd::Int(PadState::RIGHT | PadState::DOWN), "45: both arms");
+    t.expect_equal(tc.stick_bits(at(35)), gd::Int(PadState::RIGHT | PadState::DOWN), "35: still both");
+    t.expect_equal(tc.stick_bits(at(25)), gd::Int(PadState::RIGHT), "25: right only (equal sectors gave both)");
+    t.expect_equal(tc.stick_bits(at(70)), gd::Int(PadState::DOWN), "70: down only");
+    t.expect_equal(tc.stick_bits(at(-90)), gd::Int(PadState::UP), "straight up");
+    // source: by hand: the arms reach STICK_RADIUS (1.3) units, a finger lands within 1.2 of that
+    float arm = TouchControls::STICK_RADIUS * unit * tc._stick_scale;
+    gfx::Vec2 hint = tc._stick_hint;
+    t.expect(tc.press(0, hint + gfx::Vec2(0, arm * 1.1f)), "just past the down arm's end: taken");
+    t.expect_equal(tc.bits, gd::Int(PadState::DOWN), "down");
+    tc.release(0);
+    bool far = tc.press(1, hint + gfx::Vec2(arm * 0.9f, arm * 1.3f));
+    t.expect(!far || tc.bits == 0, "well below and right of the pad: nothing pressed");
+    tc.reset();
+}
+
 // Touch vibration: a buzz as a finger lands on a button or slides onto another, none for the stick.
 T3_TEST(touch_controls, buzz_on_buttons_only) {
     Touch f("none");
