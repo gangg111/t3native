@@ -44,7 +44,7 @@ ICON_SIZE = 192                                           # mipmap-xxxhdpi
 # The APKs the builder makes: NETWORK MODE over the local Wi-Fi, or over Wi-Fi Direct (the
 # wifi-direct branch: its own package, so it installs beside the other). template/<variant>.
 VARIANTS = ("lan", "direct")
-APK_NAMES = {"lan": "Tekken3.apk", "direct": "Tekken3-WD.apk"}
+APK_NAMES = {"lan": "Tekken3.apk", "direct": "Tekken3.apk"}   # one name for both variants (the user's choice)
 KEY_FILE = "key/signing_key.json"                       # next to the builder (HOME)
 PROGRESS = "@@"                                           # stdout lines the window reads as progress
 DONE = "done"                                             # the last one: "@@ done <minutes> <apk>"

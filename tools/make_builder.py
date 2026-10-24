@@ -42,6 +42,7 @@ REMAKE = build_apk.REMAKE.parent                    # the remake's checkout (REM
 OUT = ROOT / "build/builder/Tekken3Builder"
 TEMPLATE = ROOT / "build/builder/template"          # lan/ and direct/: the two APKs' templates
 # The wifi-direct branch's worktree (its Android builds make the Wi-Fi Direct APK's template).
+APP_LABEL = "Tekken 3"   # the app's name on the phone, the same for both variants
 DIRECT_TREE = Path(os.environ.get("T3_DIRECT_TREE", ROOT.parent / "t3native-wd"))
 PYTHON = Path(sys.base_prefix)                      # the CPython the venv was made from
 SITE = Path(sys.prefix) / "Lib/site-packages"       # the venv's packages
@@ -93,7 +94,8 @@ def template(out: Path, tree: Path = ROOT) -> None:
         shutil.copytree(ROOT / "android/res", res)
         for icon in res.glob("mipmap-*/ic_launcher.png"):
             placeholder_icon(icon)
-        base = build_apk.base_apk(tmp, res, tree)
+        # One name for both variants (the user's choice): "Tekken 3", this checkout's label.
+        base = build_apk.base_apk(tmp, res, tree, APP_LABEL)
         dex = build_apk.dex(tree / "android/java", tmp)
         with zipfile.ZipFile(base, "a") as z:
             z.write(dex, "classes.dex", zipfile.ZIP_DEFLATED)
