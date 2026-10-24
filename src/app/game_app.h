@@ -271,6 +271,7 @@ private:
     std::unique_ptr<Resim> _resim;  // a load in progress
     gd::Int _notice_frames = 0;
     std::string _perf_note;         // what this frame did that may take long (PerfLog::spike)
+    std::string _perf_buffers;  // the scene buffers last written to the performance log
     // Native: VERSION on ARCADE (stage_backdrops): the views draw the arcade's models and stages.
     bool _arcade_version() { return Settings.text("stage_backdrops") == "arcade"; }
     void _perf(const std::string& what);

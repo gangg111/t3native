@@ -49,6 +49,10 @@ public:
     };
     const Stats& stats() const { return stats_; }
 
+    // Native: the scene buffer's format, samples, resolve and size ("" before the first render),
+    // for the performance log.
+    std::string buffers() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

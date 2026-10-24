@@ -582,24 +582,28 @@ void QuickSelectView::_vs_handicaps() {
 }
 
 // arcade.ovl FUN_800B2EE0: a handicap bar (8 segments, `lit` of them bright) with its end caps.
+// Every part is opaque and linked into one ordering-table slot, so they draw in reverse: the tube
+// first, its caps, the black inside, the segments, the marker on top (drawn in link order the tube
+// covered the segments and the bar looked full at any handicap).
 void QuickSelectView::_vs_bar(gd::Int x, gd::Int y, gd::Int right, gd::Int lit, bool pulse) {
     gd::Int level = triangle(frame_count << 4);
     gfx::Color tint = pulse ? gfx::Color(level / 128.0f, level / 128.0f, level / 128.0f) : gfx::Color::white();
+    gd::Int bx = right != 0 ? x : x - 0x80;
+    ft4(bx + 8, y, 0x70, 0x18, 0xE6, 0xA8, 4, 0x18, 0x7EDC, 0xD, tint);
+    sprt(bx + 0x78, y, 8, 0x18, 0x7EDCA8E8, 0xD, tint);
+    sprt(bx, y, 8, 0x18, 0x7EDCA8E0, 0xD, tint);
     fill(right != 0 ? (x + 2) : (x - 0x80 + 2), y + 4, 0x7C, 0x10, gfx::Color::black());
-    sprt(right != 0 ? x + 0x57 : x - 0x5F, y, 8, 0xA, 0x7E55B6D6, 0xD);
     gd::Int edge = right == 1 ? x + 2 : x - 1;
     for (gd::Int i = 0; i < 8; ++i) {
         gd::Int e = VS_BAR + 6 * i;
-        gd::Int w = ram->u8(e);
+        // Tekken Ball's first segment is wider (0x3E).
+        gd::Int w = i == 0 && ram->u32(MODE_CTX) == GameMode::BALL ? 0x3E : ram->u8(e);
         gd::Int x0 = right == 1 ? edge : edge - w;
         gd::Int uvt = lit < i ? ram->u16(e + 4) : ram->u16(e + 2);
         ft4(x0, y + 4, w - 1, 0x10, 0xE8, 0xAC, 1, 0x10, uvt, 0xD);
         edge = right == 1 ? w + edge : edge - w;
     }
-    gd::Int bx = right != 0 ? x : x - 0x80;
-    sprt(bx, y, 8, 0x18, 0x7EDCA8E0, 0xD, tint);
-    sprt(bx + 0x78, y, 8, 0x18, 0x7EDCA8E8, 0xD, tint);
-    ft4(bx + 8, y, 0x70, 0x18, 0xE6, 0xA8, 4, 0x18, 0x7EDC, 0xD, tint);
+    sprt(right != 0 ? x + 0x57 : x - 0x5F, y, 8, 0xA, 0x7E55B6D6, 0xD);
 }
 
 // arcade.ovl FUN_800B2D44: the VS win - win record and the draws.
