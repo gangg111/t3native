@@ -596,6 +596,42 @@ T3_TEST(touch_controls, show_puts_shoulders_without_action) {
     t.expect(control_of(tc, PadState::R1) == nullptr, "R1 (not shown) not");
 }
 
+// SHAPE: round, square, rounded, round again for a round button (square, rounded, a pill for a
+// rectangle), saved with the layout, RESET back to its own.
+T3_TEST(touch_controls, edit_shapes) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.visible = true;
+    auto tap = [&](gd::Int id, gfx::Vec2 at) {
+        tc.pointer(PointerEvent::DOWN, finger(id, at));
+        tc.pointer(PointerEvent::UP, finger(id, at));
+    };
+    gfx::Vec2 shape = tc._shape_rect.position + tc._shape_rect.size * 0.5f;
+    tc.enter_edit();
+    tap(0, centre_of(tc, PadState::CIRCLE));
+    // source: by hand: the cycle round -> square -> rounded -> round
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::CIRCLE)), std::string("round"), "its own shape first");
+    tap(1, shape);
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::CIRCLE)), std::string("square"), "SHAPE: square");
+    tap(2, shape);
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::CIRCLE)), std::string("rounded"), "then rounded");
+    tap(3, centre_of(tc, PadState::START));
+    tap(4, shape);
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::START)), std::string("rounded"), "Start (a rectangle): rounded");
+    tap(5, shape);
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::START)), std::string("round"), "then a pill");
+    tc.finish_edit();
+    Touch g("none");
+    t.expect(g.tc.parse_layout(tc.layout_json()), "read back");
+    g.tc.layout();
+    t.expect_equal(g.tc.shape_of(*control_of(g.tc, PadState::CIRCLE)), std::string("rounded"), "Circle's shape kept");
+    t.expect_equal(g.tc.shape_of(*control_of(g.tc, PadState::START)), std::string("round"), "Start's too");
+    tc.enter_edit();
+    tc.reset_layout();
+    t.expect_equal(tc.shape_of(*control_of(tc, PadState::CIRCLE)), std::string("round"), "RESET: its own shape");
+    tc.finish_edit();
+}
+
 // A foldable: each window size keeps its own layout; a version 1 file is used where none is saved.
 T3_TEST(touch_controls, layouts_per_screen) {
     std::filesystem::path dir = std::filesystem::temp_directory_path() / "t3native_touch_screens";

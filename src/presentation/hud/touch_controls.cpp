@@ -270,7 +270,9 @@ void TouchControls::layout() {
     // ADD left of Reset; EDIT right of Done (for a selected own button).
     _new_rect = gfx::Rect2(gfx::Vec2(_reset_rect.position.x - GAP * u - system.x, row_y), system);
     _change_rect = gfx::Rect2(gfx::Vec2(_done_rect.end().x + GAP * u, row_y), system);
-    _hide_rect = gfx::Rect2(gfx::Vec2(centre_of(area).x - system.x / 2.0f, step_y + system.y + GAP * u), system);
+    // HIDE left of ADD, SHAPE right of EDIT: the row stays centred (a nearly square screen too).
+    _hide_rect = gfx::Rect2(gfx::Vec2(_new_rect.position.x - GAP * u - system.x, row_y), system);
+    _shape_rect = gfx::Rect2(gfx::Vec2(_change_rect.end().x + GAP * u, row_y), system);
     // Native: the standard buttons the edit changed press what they were given, under their names.
     for (const auto& c : _controls) {
         if (c->custom_id != 0) continue;
@@ -608,14 +610,31 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
         float alpha = down ? pressed_alpha : rest;
         gfx::Color edge = with_alpha(down ? gfx::Color::white() : OUTLINE, alpha);
         gfx::Color backing(0, 0, 0, (down ? PRESSED_FILL : FILL) * alpha);
-        if (!is_zero(c->rect.size)) {
-            canvas.draw_rect(c->rect, backing);
-            canvas.draw_rect(c->rect, edge, false, 2.0f);
-            _label(canvas, c->label, centre_of(c->rect), c->rect.size.y * 0.42f, alpha);
+        // Native: the shape the edit gave it (SHAPE); the glyphs of an own or changed button's face
+        // buttons in their colours where it has no name of its own.
+        std::string shape = shape_of(*c);
+        bool round_control = is_zero(c->rect.size);
+        gfx::Rect2 body = round_control ? gfx::Rect2(c->centre - gfx::Vec2(c->radius, c->radius), gfx::Vec2(2.0f * c->radius, 2.0f * c->radius))
+                                        : c->rect;
+        float corner = shape == "rounded" ? 0.3f * std::min(body.size.x, body.size.y)
+                       : (shape == "round" && !round_control) ? 0.5f * std::min(body.size.x, body.size.y) - 0.5f : 0.0f;
+        if (shape == "round" && round_control) {
+            canvas.draw_circle(c->centre, c->radius, backing);
+            canvas.draw_arc(c->centre, c->radius, 0, TAU, 40, edge, 2.0f);
+        } else {
+            std::vector<gfx::Vec2> outline = rounded({body.position, gfx::Vec2(body.end().x, body.position.y), body.end(),
+                                                      gfx::Vec2(body.position.x, body.end().y)},
+                                                     corner, 6);
+            canvas.draw_colored_polygon(outline, backing);
+            outline.push_back(outline.front());
+            canvas.draw_polyline(outline, edge, 2.0f);
+        }
+        gfx::Vec2 mid = centre_of(body);
+        if (_draw_own_glyphs(canvas, *c, mid, std::min(body.size.x, body.size.y) * 0.4f, alpha)) continue;
+        if (!round_control) {
+            _label(canvas, c->label, mid, c->rect.size.y * 0.42f, alpha);
             continue;
         }
-        canvas.draw_circle(c->centre, c->radius, backing);
-        canvas.draw_arc(c->centre, c->radius, 0, TAU, 40, edge, 2.0f);
         if (c->label.empty()) {
             ButtonGlyphs::draw(canvas, c->bits, c->centre, c->radius * 0.8f, alpha);
         } else {
@@ -668,6 +687,7 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
             _draw_rect_button(canvas, _minus_rect, "-", false);
             _draw_rect_button(canvas, _plus_rect, "+", false);
             if (hideable(selected)) _draw_rect_button(canvas, _hide_rect, off_in_edit(selected) ? "SHOW" : "HIDE", false);
+            if (selected != STICK_KEY) _draw_rect_button(canvas, _shape_rect, "SHAPE", false);
             float mid = (_minus_rect.end().x + _plus_rect.position.x) / 2.0f;
             float room = _plus_rect.position.x - _minus_rect.end().x - GAP * u;
             std::string name = selected;
@@ -682,6 +702,29 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
         }
         if (wizard) _draw_wizard(canvas);
     }
+}
+
+// An own or changed button with no name of its own that presses face buttons only (one step): their
+// glyphs side by side in their colours (Square, Triangle, Cross, Circle: 1, 2, 3, 4). False otherwise.
+bool TouchControls::_draw_own_glyphs(gfx::Canvas& canvas, const Control2& c, gfx::Vec2 at, float r, float alpha) const {
+    const CustomButton* b = c.custom_id != 0 ? custom_button(c.custom_id) : nullptr;
+    if (b == nullptr || !b->label.empty() || b->steps.size() != 1) return false;
+    gd::Int step = b->steps[0];
+    gd::Int face = PadState::SQUARE | PadState::TRIANGLE | PadState::CROSS | PadState::CIRCLE;
+    if (step == 0 || (step & ~face) != 0) return false;
+    std::vector<gd::Int> glyphs;
+    for (gd::Int bit : {PadState::SQUARE, PadState::TRIANGLE, PadState::CROSS, PadState::CIRCLE}) {
+        if ((step & bit) != 0) glyphs.push_back(bit);
+    }
+    float n = static_cast<float>(glyphs.size());
+    float size = n == 1.0f ? r : r * 1.1f / n;   // two or more within the button
+    float step_x = 2.1f * size;
+    float x = at.x - step_x * (n - 1.0f) / 2.0f;
+    for (gd::Int bit : glyphs) {
+        ButtonGlyphs::draw(canvas, bit, gfx::Vec2(x, at.y), size, alpha);
+        x += step_x;
+    }
+    return true;
 }
 
 void TouchControls::_label(gfx::Canvas& canvas, const std::string& text, gfx::Vec2 at, float height, float alpha) {
@@ -794,6 +837,12 @@ bool TouchControls::remappable(const std::string& key) {
 }
 
 bool TouchControls::hideable(const std::string& key) { return key != STICK_KEY && key != PadState::NAMES.at(PadState::CROSS); }
+
+std::string TouchControls::shape_of(const Control2& c) const {
+    auto it = shapes.find(control_key(c));
+    if (it != shapes.end()) return it->second;
+    return is_zero(c.rect.size) ? "round" : "square";
+}
 
 bool TouchControls::off_in_edit(const std::string& key) const {
     if (hidden.count(key) != 0) return true;
@@ -1152,6 +1201,7 @@ void TouchControls::reset_layout() {
     placements.clear();
     hidden.clear();
     forced_shown.clear();
+    shapes.clear();
     _store_screen();
     _edit_fingers.clear();
     _pinch.reset();
@@ -1247,6 +1297,16 @@ bool TouchControls::parse_layout(const std::string& text) {
             if (off[i].is_string() && hideable(off[i].str())) hidden.insert(off[i].str());
         }
     }
+    // The shapes: {"Cross": "square", "Start": "round"}.
+    shapes.clear();
+    const gd::Json& shaped = root.get("shapes");
+    if (shaped.is_object()) {
+        for (const auto& [key, value] : shaped.members()) {
+            if (!value.is_string()) continue;
+            std::string v = value.str();
+            if (v == "round" || v == "square" || v == "rounded") shapes[key] = v;
+        }
+    }
     const gd::Json& on = root.get("shown");
     if (on.is_array()) {
         for (gd::Int i = 0; i < on.size(); ++i) {
@@ -1314,6 +1374,11 @@ std::string TouchControls::layout_json() const {
         gd::JsonValue off = gd::JsonValue::array();
         for (const std::string& key : hidden) off.append(key);
         root.set("hidden", off);
+    }
+    if (!shapes.empty()) {
+        gd::JsonValue shaped = gd::JsonValue::object();
+        for (const auto& [key, value] : shapes) shaped.set(key, value);
+        root.set("shapes", shaped);
     }
     if (!forced_shown.empty()) {
         gd::JsonValue on = gd::JsonValue::array();
@@ -1494,6 +1559,19 @@ bool TouchControls::_edit_pointer(PointerEvent kind, const Pointer& p) {
         }
         if (!selected.empty() && (has_point(_minus_rect, at) || has_point(_plus_rect, at))) {
             step_size(has_point(_plus_rect, at) ? 1.0f : -1.0f);
+            return true;
+        }
+        if (!selected.empty() && selected != STICK_KEY && has_point(_shape_rect, at)) {
+            for (const auto& c : _controls) {
+                if (control_key(*c) != selected) continue;
+                bool round_control = is_zero(c->rect.size);
+                std::string now = shape_of(*c);
+                std::string next = round_control ? (now == "round" ? "square" : now == "square" ? "rounded" : "round")
+                                                 : (now == "square" ? "rounded" : now == "rounded" ? "round" : "square");
+                if (next == (round_control ? "round" : "square")) shapes.erase(selected);
+                else shapes[selected] = next;
+                break;
+            }
             return true;
         }
         if (!selected.empty() && hideable(selected) && has_point(_hide_rect, at)) {

@@ -22,7 +22,7 @@
 // default. The settings screen's "Edit layout" row opens it (`enter_edit`). Every control shows its
 // size in window pixels while editing (a diameter, or width x height), and the last one touched gets
 // a row with − and + that change that size by one pixel, so controls can be given equal sizes.
-// HIDE / SHOW under that row takes the selected control (the stick or cross too) off the screen
+// SHAPE gives the selected control another shape (round, square, rounded). HIDE / SHOW in the top row takes the selected control (the stick or cross too) off the screen
 // outside the edit, or puts it back; the edit shows a hidden one dimmed with OFF, RESET shows all.
 // ADD opens a wizard that makes a button of the player's own (any face and shoulder buttons at
 // once, with a name typed in), EDIT changes or deletes the selected one; they replace the remake's
@@ -248,7 +248,13 @@ public:
     gfx::Rect2 _done_rect, _reset_rect;
     gfx::Rect2 _minus_rect, _plus_rect;      // the selected control's size, one pixel at a time
     gfx::Rect2 _new_rect, _change_rect;      // ADD (a new button), EDIT (the selected own button)
-    gfx::Rect2 _hide_rect;                   // HIDE / SHOW (the selected control) under the − + row
+    gfx::Rect2 _hide_rect;                   // HIDE / SHOW (the selected control), in the top row
+    gfx::Rect2 _shape_rect;                  // SHAPE (the selected control), in the top row
+    // Native: a control's shape ("round", "square", "rounded"; for a rectangle "rounded" or "round",
+    // a pill); missing: its own (round, or the rectangle).
+    std::map<std::string, std::string> shapes;
+    std::string shape_of(const Control2& c) const;
+    bool _draw_own_glyphs(gfx::Canvas& canvas, const Control2& c, gfx::Vec2 at, float r, float alpha) const;
     std::set<std::string> hidden;            // control keys (STICK_KEY too) not shown outside the edit
     // Shoulder buttons shown though the game's key configuration gives them no action (SHOW).
     std::set<std::string> forced_shown;
