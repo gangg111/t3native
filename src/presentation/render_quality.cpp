@@ -46,15 +46,6 @@ const gd::Dict<std::string, RenderQuality::Preset> RenderQuality::PRESETS = [] {
     mobile.glow = 0.5;
     mobile.scale = 0.85;
     d.set("mobile", mobile);
-    // Native: for phones the Standard preset is too much for (a Mali-G52 kept 48 of 60 steps a
-    // second): no multisampling, a smaller shadow map and a smaller view.
-    Preset mobile_low;
-    mobile_low.msaa = MSAA_DISABLED;
-    mobile_low.shadow_size = 1024;
-    mobile_low.soft = SHADOW_QUALITY_SOFT_VERY_LOW;
-    mobile_low.glow = 0.5;
-    mobile_low.scale = 0.7;
-    d.set("mobile_low", mobile_low);
     // The Mobile renderer has no SSAO, SSIL or SSR: its best is sharper shadows and edges at full size.
     Preset mobile_high;
     mobile_high.msaa = MSAA_4X;

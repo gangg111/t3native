@@ -54,7 +54,7 @@ public:
         d.set("game_texts", Entry{S("english"), {S("english"), S("japanese")}});
         d.set("language", Entry{S("auto"), {S("auto"), S("en"), S("ja")}});
         d.set("fullscreen", Entry{false, {false, true}});
-        d.set("graphics", Entry{S("auto"), {S("auto"), S("web"), S("mobile_low"), S("mobile"), S("mobile_high"), S("desktop_low"), S("desktop_high")}});
+        d.set("graphics", Entry{S("auto"), {S("auto"), S("web"), S("mobile"), S("mobile_high"), S("desktop_low"), S("desktop_high")}});
         d.set("texture_filter", Entry{S("smooth"), {S("smooth"), S("crisp")}});
         d.set("shading", Entry{S("smooth"), {S("original"), S("smooth"), S("curved")}});
         d.set("texture_pack", Entry{S(""), {S("")}});
@@ -94,7 +94,7 @@ public:
     static inline const gd::Dict<std::string, gd::Arr<std::string>> RENDERER_PRESETS = [] {
         gd::Dict<std::string, gd::Arr<std::string>> d;
         d.set("gl_compatibility", {"web"});
-        d.set("mobile", {"mobile_low", "mobile", "mobile_high"});   // native: mobile_low (Auto stays mobile)
+        d.set("mobile", {"mobile", "mobile_high"});
         d.set("forward_plus", {"desktop_low", "desktop_high"});
         return d;
     }();
