@@ -234,8 +234,10 @@ void TouchControls::layout() {
                   i == 0 ? "SELECT" : "START");
     }
     gfx::Vec2 shoulder = SHOULDER_SIZE * u;
-    // Layout edit: every shoulder button can be placed while editing.
-    gd::Int shown = editing ? (PadState::L1 | PadState::L2 | PadState::R1 | PadState::R2) : shoulders;
+    // The shoulder buttons the key configuration gives an action, in the game and in the layout edit
+    // alike (native: the user's choice, no L and R in the layout by default; an own button from ADD
+    // presses them).
+    gd::Int shown = shoulders;
     // Native: also those the edit changed or showed (SHOW), though the key configuration gives none.
     for (gd::Int bit : {PadState::L1, PadState::L2, PadState::R1, PadState::R2}) {
         const std::string& name = PadState::NAMES.at(bit);

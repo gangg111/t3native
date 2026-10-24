@@ -575,25 +575,23 @@ T3_TEST(touch_controls, edit_changes_standard_buttons) {
     tc.reset();
 }
 
-// A shoulder button with no action in the key configuration: OFF in the edit, SHOW puts it in the
-// game anyway (and a change from EDIT does too).
-T3_TEST(touch_controls, show_puts_shoulders_without_action) {
+// L and R are not in the layout by default (the user's choice, 2026-10-24): neither in the game nor
+// in the edit; one the key configuration gives an action is in both.
+T3_TEST(touch_controls, shoulders_only_with_an_action) {
     Touch f("none");
     TouchControls& tc = f.tc;
     tc.visible = true;
     tc.set_shoulders(0);
+    t.expect(control_of(tc, PadState::L1) == nullptr, "no L1 in the game by default");
     tc.enter_edit();
-    t.expect(tc.off_in_edit("L1"), "L1 with no action: OFF in the edit");
-    gfx::Vec2 l1 = centre_of(tc, PadState::L1);
-    tc.pointer(PointerEvent::DOWN, finger(0, l1));
-    tc.pointer(PointerEvent::UP, finger(0, l1));
-    gfx::Vec2 hide = tc._hide_rect.position + tc._hide_rect.size * 0.5f;
-    tc.pointer(PointerEvent::DOWN, finger(1, hide));
-    tc.pointer(PointerEvent::UP, finger(1, hide));
-    t.expect(!tc.off_in_edit("L1"), "SHOW: on");
+    t.expect(control_of(tc, PadState::L1) == nullptr && control_of(tc, PadState::R2) == nullptr, "nor in the edit");
     tc.finish_edit();
-    t.expect(control_of(tc, PadState::L1) != nullptr, "L1 in the game");
-    t.expect(control_of(tc, PadState::R1) == nullptr, "R1 (not shown) not");
+    tc.set_shoulders(PadState::L1);
+    t.expect(control_of(tc, PadState::L1) != nullptr, "L1 once it has an action");
+    tc.enter_edit();
+    t.expect(control_of(tc, PadState::L1) != nullptr, "and in the edit");
+    t.expect(control_of(tc, PadState::R1) == nullptr, "R1 (no action) not");
+    tc.finish_edit();
 }
 
 // SHAPE: round, square, rounded, round again for a round button (square, rounded, a pill for a
