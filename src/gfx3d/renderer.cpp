@@ -422,7 +422,7 @@ struct Renderer3D::Impl {
         glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
         for (GLenum format : {GLenum(GL_RGBA16F), GLenum(GL_RGB10_A2), GLenum(GL_RGBA8)}) {
             samples = std::max(1, std::min(msaa, max_samples));
-            if (tile_buffers(format, w, h)) return;
+            if (samples < 2 ? single_buffers(format, w, h) : tile_buffers(format, w, h)) return;
             glGenFramebuffers(1, &msaa_fbo);
             glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
             glGenRenderbuffers(1, &msaa_color);
@@ -463,6 +463,39 @@ struct Renderer3D::Impl {
             msaa_fbo = msaa_color = msaa_depth = 0;
         }
         Log::error("gfx3d: no colour buffer format renders");
+    }
+
+    // Native: one sample (the Low preset): the scene drawn straight into the texture the encode
+    // reads, with a plain depth buffer; nothing to resolve. A one-sample multisampled buffer and its
+    // blit drew black with flashes on Mali (a Galaxy A22's G52). False when the format does not render.
+    bool single_buffers(GLenum format, int w, int h) {
+        glGetError();
+        glGenTextures(1, &resolve_tex);
+        glBindTexture(GL_TEXTURE_2D, resolve_tex);
+        GLenum type = format == GL_RGBA16F ? GL_HALF_FLOAT : (format == GL_RGB10_A2 ? GL_UNSIGNED_INT_2_10_10_10_REV : GL_UNSIGNED_BYTE);
+        glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(format), w, h, 0, GL_RGBA, type, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glGenFramebuffers(1, &msaa_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, resolve_tex, 0);
+        glGenRenderbuffers(1, &msaa_depth);
+        glBindRenderbuffer(GL_RENDERBUFFER, msaa_depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, msaa_depth);
+        if (glGetError() == GL_NO_ERROR && glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+            in_tile_resolve = true;   // nothing to blit: the encode reads resolve_tex as it is
+            float_buffer = format == GL_RGBA16F;
+            described = std::string(format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") +
+                        " x1 straight, " + std::to_string(w) + "x" + std::to_string(h);
+            Log::info("gfx3d: " + described);
+            return true;
+        }
+        glDeleteFramebuffers(1, &msaa_fbo), glDeleteRenderbuffers(1, &msaa_depth), glDeleteTextures(1, &resolve_tex);
+        msaa_fbo = msaa_depth = resolve_tex = 0;
+        return false;
     }
 
     // The scene's buffer resolved in the tile memory (GL_EXT_multisampled_render_to_texture, Android):
