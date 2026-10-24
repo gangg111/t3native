@@ -265,7 +265,16 @@ void TouchControls::layout() {
     // ADD left of Reset; EDIT right of Done (for a selected own button).
     _new_rect = gfx::Rect2(gfx::Vec2(_reset_rect.position.x - GAP * u - system.x, row_y), system);
     _change_rect = gfx::Rect2(gfx::Vec2(_done_rect.end().x + GAP * u, row_y), system);
+    _hide_rect = gfx::Rect2(gfx::Vec2(centre_of(area).x - system.x / 2.0f, step_y + system.y + GAP * u), system);
     _apply_placements(area);
+    if (!editing && !hidden.empty()) {   // Layout edit: the controls the player hid
+        gd::Arr<gd::Ref<Control2>> kept;
+        for (const auto& c : _controls) {
+            if (hidden.count(control_key(*c)) == 0) kept.append(c);
+        }
+        _controls = kept;
+        if (hidden.count(STICK_KEY) != 0) _stick_zone = gfx::Rect2();
+    }
     if (playback && !editing) {   // Layout edit: every control placeable over a movie too
         gd::Arr<gd::Ref<Control2>> kept;
         for (const auto& c : _controls) {
@@ -620,6 +629,10 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
             if (held || key == selected) {
                 canvas.draw_rect(grow(gfx::Rect2(centre - half, half * 2.0f), 3.0f), gfx::Color(1, 1, 1, held ? 0.6f : 0.35f), false, 1.0f);
             }
+            if (hidden.count(key) != 0) {   // hidden outside the edit: dimmed, OFF on it
+                canvas.draw_rect(gfx::Rect2(centre - half, half * 2.0f), gfx::Color(0, 0, 0, 0.55f));
+                _label(canvas, "OFF", centre, 0.45f * u, PRESSED_ALPHA);
+            }
             // Its size in pixels under it (over it at the window's bottom edge).
             float th = 0.36f * u;
             float below = centre.y + half.y + 0.25f * u + th / 2.0f;
@@ -638,6 +651,7 @@ void TouchControls::_draw(gfx::Canvas& canvas) {
         if (!selected.empty() && size_px(selected, px)) {
             _draw_rect_button(canvas, _minus_rect, "-", false);
             _draw_rect_button(canvas, _plus_rect, "+", false);
+            _draw_rect_button(canvas, _hide_rect, hidden.count(selected) != 0 ? "SHOW" : "HIDE", false);
             float mid = (_minus_rect.end().x + _plus_rect.position.x) / 2.0f;
             float room = _plus_rect.position.x - _minus_rect.end().x - GAP * u;
             std::string name = selected;
@@ -1044,6 +1058,7 @@ void TouchControls::finish_edit() {
 
 void TouchControls::reset_layout() {
     placements.clear();
+    hidden.clear();
     _store_screen();
     _edit_fingers.clear();
     _pinch.reset();
@@ -1130,6 +1145,14 @@ bool TouchControls::parse_layout(const std::string& text) {
             if (static_cast<gd::Int>(custom.size()) == MAX_CUSTOM) break;
         }
     }
+    // The hidden controls: ["L1", "Stick", ...].
+    hidden.clear();
+    const gd::Json& off = root.get("hidden");
+    if (off.is_array()) {
+        for (gd::Int i = 0; i < off.size(); ++i) {
+            if (off[i].is_string()) hidden.insert(off[i].str());
+        }
+    }
     screens.clear();
     if (by_screen.is_object()) {
         for (const auto& [key, rec] : by_screen.members()) {
@@ -1164,6 +1187,11 @@ std::string TouchControls::layout_json() const {
         buttons.append(rec);
     }
     root.set("buttons", buttons);
+    if (!hidden.empty()) {
+        gd::JsonValue off = gd::JsonValue::array();
+        for (const std::string& key : hidden) off.append(key);
+        root.set("hidden", off);
+    }
     if (!shared.is_empty()) root.set("controls", write_controls(shared));
     root.set("screens", by_screen);
     return gd::json_stringify(root, "  ", false) + "\n";
@@ -1320,6 +1348,11 @@ bool TouchControls::_edit_pointer(PointerEvent kind, const Pointer& p) {
         }
         if (!selected.empty() && (has_point(_minus_rect, at) || has_point(_plus_rect, at))) {
             step_size(has_point(_plus_rect, at) ? 1.0f : -1.0f);
+            return true;
+        }
+        if (!selected.empty() && has_point(_hide_rect, at)) {
+            if (hidden.count(selected) != 0) hidden.erase(selected);
+            else hidden.insert(selected);
             return true;
         }
         _edit_fingers.erase(id);

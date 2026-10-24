@@ -490,6 +490,39 @@ T3_TEST(touch_controls, edit_sizes_in_pixels_and_one_pixel_steps) {
     t.expect(approx(control_of(tc, PadState::CIRCLE)->radius, control_of(tc, PadState::CROSS)->radius), "Circle as big as Cross");
 }
 
+// The edit's HIDE / SHOW: a hidden control is gone outside the edit (no drawing, no touch), dimmed
+// in the edit, kept in the layout file, and RESET shows it again.
+T3_TEST(touch_controls, edit_hides_and_shows_controls) {
+    Touch f("none");
+    TouchControls& tc = f.tc;
+    tc.visible = true;
+    tc.enter_edit();
+    gfx::Vec2 hide = tc._hide_rect.position + tc._hide_rect.size * 0.5f;
+    gfx::Vec2 cross = centre_of(tc, PadState::CROSS);
+    tc.pointer(PointerEvent::DOWN, finger(0, cross));
+    tc.pointer(PointerEvent::UP, finger(0, cross));
+    tc.pointer(PointerEvent::DOWN, finger(1, hide));
+    tc.pointer(PointerEvent::UP, finger(1, hide));
+    t.expect(tc.hidden.count("Cross") == 1, "HIDE takes the selected Cross off");
+    t.expect(control_of(tc, PadState::CROSS) != nullptr, "still there in the edit (to be shown again)");
+    tc.finish_edit();
+    t.expect(control_of(tc, PadState::CROSS) == nullptr, "gone outside the edit");
+    bool taken = tc.press(2, cross);
+    t.expect_equal(tc.bits & PadState::CROSS, gd::Int(0), "its place presses nothing");
+    if (taken) tc.release(2);
+    // source: by hand: the file lists it under "hidden"; a fresh reader hides it too
+    t.expect(tc.layout_json().find("\"hidden\"") != std::string::npos, "saved in the layout");
+    Touch g("none");
+    t.expect(g.tc.parse_layout(tc.layout_json()), "read back");
+    g.tc.layout();
+    t.expect(control_of(g.tc, PadState::CROSS) == nullptr, "hidden after reading the file");
+    tc.enter_edit();
+    tc.reset_layout();
+    t.expect(tc.hidden.empty(), "RESET shows every control");
+    tc.finish_edit();
+    t.expect(control_of(tc, PadState::CROSS) != nullptr, "Cross back");
+}
+
 // A foldable: each window size keeps its own layout; a version 1 file is used where none is saved.
 T3_TEST(touch_controls, layouts_per_screen) {
     std::filesystem::path dir = std::filesystem::temp_directory_path() / "t3native_touch_screens";

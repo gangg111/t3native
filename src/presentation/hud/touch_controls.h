@@ -22,6 +22,8 @@
 // default. The settings screen's "Edit layout" row opens it (`enter_edit`). Every control shows its
 // size in window pixels while editing (a diameter, or width x height), and the last one touched gets
 // a row with − and + that change that size by one pixel, so controls can be given equal sizes.
+// HIDE / SHOW under that row takes the selected control (the stick or cross too) off the screen
+// outside the edit, or puts it back; the edit shows a hidden one dimmed with OFF, RESET shows all.
 // ADD opens a wizard that makes a button of the player's own (any face and shoulder buttons at
 // once, with a name typed in), EDIT changes or deletes the selected one; they replace the remake's
 // fixed macro buttons (the settings' "Touch macros") and are saved in the same file.
@@ -35,6 +37,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -238,6 +241,8 @@ public:
     gfx::Rect2 _done_rect, _reset_rect;
     gfx::Rect2 _minus_rect, _plus_rect;      // the selected control's size, one pixel at a time
     gfx::Rect2 _new_rect, _change_rect;      // ADD (a new button), EDIT (the selected own button)
+    gfx::Rect2 _hide_rect;                   // HIDE / SHOW (the selected control) under the − + row
+    std::set<std::string> hidden;            // control keys (STICK_KEY too) not shown outside the edit
 
     // The wizard of an own button: the pad buttons it holds (toggled), its name, OK / CANCEL / DELETE.
     static constexpr gd::Int MAX_CUSTOM = 8;
