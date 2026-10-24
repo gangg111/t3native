@@ -18,9 +18,9 @@ No game data is included. Assets come from your own disc through the remake's co
 `Tekken3Builder.exe` (in the releases) makes the APK from your own discs: one file, nothing to
 install, no game data inside. Choose the Japanese PlayStation disc (Tekken 3 (Japan) (Rev 1) or
 (Japan), SLPS-01300), optionally the USA disc (SLUS-00402, English texts) and MAME's arcade set
-`tekken3` (World ver. E1), the network mode for multiplayer (the local Wi-Fi, or Wi-Fi Direct
-with no router), and click BUILD APK. The window checks every choice and names the release it
-found. The first build makes a signing key next to the .exe; later builds reuse it, so a new APK
+`tekken3` (World ver. E1), and click BUILD APK. The window checks every choice and names the
+release it found. NETWORK MODE in the APK finds games through the router and over Wi-Fi Direct
+(no router) at once. The first build makes a signing key next to the .exe; later builds reuse it, so a new APK
 installs over the old one. Sources: `builder/`, `tools/make_builder.py`; see `builder/README.txt`.
 
 ### Layout
