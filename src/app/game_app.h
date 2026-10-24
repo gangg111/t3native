@@ -296,7 +296,10 @@ private:
     // ---- native: NETWORK MODE (net/net_session.h; game_net.cpp). The host's flow runs as always
     // with player 2's pads from the guest and streams its log of each step; the guest's flow runs
     // those records (its callbacks answer from them, as a save state's load does).
-    enum class NetPage { NONE, CHOICE, HOSTING, SEARCHING, CONNECTING, MESSAGE };
+    enum class NetPage { NONE, CHOICE, HOSTING, SEARCHING, DIRECT, CONNECTING, MESSAGE };
+    static constexpr double NET_DIRECT_WAIT = 45.0;   // seconds for a Wi-Fi Direct group and its address
+    double _net_direct_since = 0;                     // DIRECT: the connect's start
+    std::string _net_direct_name;                     // DIRECT: the host's name
     static constexpr uint8_t NET_DELAY = 2;          // steps a pad waits on both sides (the round trip's cover)
     static constexpr uint32_t NET_CHECK_EVERY = 60;   // steps between the host's checksums
     static constexpr double NET_STALL = 0.5;          // seconds of waiting before the banner says so

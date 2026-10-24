@@ -310,6 +310,33 @@ public class GameActivity extends NativeActivity {
         return plain.length() > 20 ? plain.substring(0, 20) : plain;
     }
 
+    // NETWORK MODE over Wi-Fi Direct (WifiDirect.java), called from the game thread.
+    private WifiDirect direct;
+
+    private synchronized WifiDirect direct() {
+        if (direct == null) direct = new WifiDirect(this);
+        return direct;
+    }
+
+    public void directHost(String name) { direct().host(name); }
+    public void directSearch() { direct().search(); }
+    public void directConnect(String deviceAddress) { direct().connect(deviceAddress); }
+    public void directStop() { direct().stop(); }
+    public void directSettle() { direct().settle(); }
+    /** The hosts found: "device address \t name" lines. */
+    public String directHosts() { return direct().hosts(); }
+    /** The host's address in the group once this guest joined it, else "". */
+    public String directAddress() { return direct().address(); }
+    /** What the player should know ("ALLOW NEARBY DEVICES", "TURN ON WI-FI", ...), else "". */
+    public String directNote() { return direct().note(); }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        direct().permissionAnswered(requestCode, results);
+        hideSystemBars();
+    }
+
     private WifiManager.MulticastLock multicastLock;
 
     /** A host keeps the Wi-Fi letting broadcasts (the searches for games) in while it waits. */
