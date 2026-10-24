@@ -70,7 +70,16 @@ public:
     // The window's left and right edges in screen x (0 and SCREEN_X but in the wide mode).
     float wide_left() const;
     float wide_right() const;
+    // The window's top and bottom edges in screen y (0 and SCREEN_Y but in the wide mode on a
+    // window taller than 4:3: a tablet, an unfolded phone).
+    float wide_top() const;
+    float wide_bottom() const;
+    // A picture filling the screen, and in the wide mode its edge rows and columns stretched out to
+    // the window's edges (a plain-coloured edge, the options' blue, goes on as it is).
+    void image_wide(const gfx::TextureRef& tex);
     bool widened() const { return wide && wide_background; }
+    // The wide mode's foreground area in screen coordinates (what ScreenMask leaves open otherwise).
+    virtual gfx::Rect2 foreground_area() const { return gfx::Rect2(0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y)); }
     void redraw() { box = layout_box(); }
     void queue_redraw() {}
 

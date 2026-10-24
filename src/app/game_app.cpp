@@ -1508,12 +1508,15 @@ void GameApp::_render() {
     practice_view.draw(*canvas, window);
     move_list_view.draw(*canvas, window);
     if (attract_screen.visible) attract_screen.draw(*canvas, window);
-    quick_view.wide = select_view.wide = Settings.flag("wide_screens");
-    mask.open_sides = (quick_view.visible && quick_view.widened()) || (select_view.visible && select_view.widened());
+    // Native: the wide mode (the screens that widen their backgrounds; the mask opens while one shows).
+    bool wide = Settings.flag("wide_screens");
+    mask.open = false;
     for (ScreenCanvas* view : {static_cast<ScreenCanvas*>(&main_menu_view), static_cast<ScreenCanvas*>(&options_view),
                                static_cast<ScreenCanvas*>(&select_view), static_cast<ScreenCanvas*>(&quick_view),
                                static_cast<ScreenCanvas*>(&vs_view), static_cast<ScreenCanvas*>(&result_view),
                                static_cast<ScreenCanvas*>(&ranking_view), static_cast<ScreenCanvas*>(&ending_view)}) {
+        view->wide = wide;
+        if (view->visible && view->widened()) mask.open = true;
         view->draw(*canvas, window);
     }
     mask.draw(*canvas, window);

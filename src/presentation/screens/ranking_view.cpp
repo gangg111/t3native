@@ -18,6 +18,7 @@ void RankingView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>
         v->upload_file(gd::path_join(screens_dir, "ranking_" + gd::str(i) + ".tims"));
         _pages.append(v);
     }
+    wide_background = true;   // native: the wide mode widens the name entry's band (_draw)
     // The rows' lines, faces and bars are clipped below the header; their texts, in the front
     // slot, are not (the draw area is reset before the text slot is drawn).
     add_pass(gfx::Blend::MIX, [this] { _rows(false); }, ROWS_CLIP());
@@ -44,7 +45,8 @@ void RankingView::_draw() {
         black();
     } else if (mode == RankingScreen::TableMode::NAME_ENTRY) {
         // The name's row on a blue band (blend mode 0).
-        fill(0, ram->u16(T + RankingScreen::T_NAME_SCREEN_ROW) * 0x48 + 0x68, 0x170, 0x48, gfx::Color(0, 0, 0x10 / 255.0f, 0.5f));
+        fill(wide_left(), ram->u16(T + RankingScreen::T_NAME_SCREEN_ROW) * 0x48 + 0x68, wide_right() - wide_left(), 0x48,
+             gfx::Color(0, 0, 0x10 / 255.0f, 0.5f));
     }
 }
 

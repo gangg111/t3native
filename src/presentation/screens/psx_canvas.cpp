@@ -117,6 +117,22 @@ void PsxCanvas::backdrop(gd::Int kind, gd::Int colour) {
                 gfx::Vec2 top_far(far, top.y), bottom_far(far, bottom.y);
                 quad(top_far, top, bottom_far, bottom, c[at[0]], c[at[0]], c[at[1]], c[at[1]]);
             }
+            // The same at the screen's top and bottom (a window taller than 4:3), with the corners
+            // out to the window's corners where the edge meets a side too.
+            for (float edge : {0.0f, static_cast<float>(SCREEN_Y)}) {
+                int at[2], n = 0;
+                for (int i = 0; i < 4 && n < 2; ++i)
+                    if (v[i].y == edge) at[n++] = i;
+                if (n < 2) continue;
+                if (v[at[0]].x > v[at[1]].x) std::swap(at[0], at[1]);
+                float far = edge == 0.0f ? wide_top() : wide_bottom();
+                if (far == edge) continue;
+                gfx::Color cl = c[at[0]], cr = c[at[1]];
+                float x0 = v[at[0]].x, x1 = v[at[1]].x;
+                if (x0 == 0.0f) x0 = wide_left();
+                if (x1 == static_cast<float>(SCREEN_X)) x1 = wide_right();
+                quad(gfx::Vec2(x0, edge), gfx::Vec2(x1, edge), gfx::Vec2(x0, far), gfx::Vec2(x1, far), cl, cr, cl, cr);
+            }
         }
     }
 }

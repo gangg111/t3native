@@ -22,6 +22,8 @@ public:
     static constexpr gd::Int FREE_TEXTS = 0x800223D8LL;
     // FUN_80029860's display rectangle (0x800AE6F8): the part of the 368 x 480 screen drawn to.
     static gfx::Rect2 DISPLAY() { return gfx::Rect2(0, 20, 368, 448); }
+    // Native: the wide mode keeps the foreground in the display rectangle (ScreenMask's opening).
+    gfx::Rect2 foreground_area() const override { return DISPLAY(); }
     static inline const gd::Arr<gd::Int> BACKDROPS{0x80022CF8LL, 0x80022D78LL};   // FUN_800551FC's gradient quads
     static constexpr gd::Int FRAME_COUNT_SHIFT = 4;
 

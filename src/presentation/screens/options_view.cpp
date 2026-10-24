@@ -83,6 +83,7 @@ void OptionsView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>
     setup_psx(hud_data, game_ram, image);
     pictures_dir = screens_dir;
     reload_pictures();
+    wide_background = true;   // native: the wide mode stretches the picture's plain edges out
 }
 
 // The options backdrop and the pad pictures, from the texture pack in use.
@@ -104,7 +105,7 @@ gd::Int OptionsView::_title_colour() { return gd::Int(flow->progress->options_co
 void OptionsView::_draw() {
     begin();
     black();
-    image(picture_texture, 0, 0, SCREEN().x, SCREEN().y);
+    image_wide(picture_texture);
     if (options == nullptr || flow->sub != 1) return;
     switch (options->page) {
         case 0:

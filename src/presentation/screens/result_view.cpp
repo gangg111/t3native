@@ -1,6 +1,9 @@
 // remake/presentation/screens/result_view.gd
 #include "presentation/screens/result_view.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "content/flow_data.h"
 #include "core/fight/fight_state.h"
 #include "core/game/game_flow.h"
@@ -42,7 +45,10 @@ void ResultView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>&
     _force->upload_file(gd::path_join(screens_dir, "result_force.tims"));
     pictures_dir = screens_dir;
     reload_pictures();
-    add_pass(gfx::Blend::SUB, [this] { _subtracted(); });
+    // Native: the wide mode: _draw, the subtracted band and the stripes are background.
+    wide_background = true;
+    add_background_pass(gfx::Blend::SUB, [this] { _subtracted(); });
+    add_background_pass(gfx::Blend::MIX, [this] { _stripes(); });
     add_pass(gfx::Blend::MIX, [this] { _middle(); });
     add_pass(gfx::Blend::ADD, [this] { _added(); });
     add_pass(gfx::Blend::MIX, [this] { _front(); });
@@ -69,7 +75,7 @@ void ResultView::_draw() {
     black();
     if (flow == nullptr) return;
     if (_screen == GameFlow::State::TIME_RESULT || _force_result()) {
-        if (!_force_result()) fill(0, 0, SCREEN().x, SCREEN().y, psx(TIME_ATTACK_CLEAR));
+        if (!_force_result()) fill(wide_left(), wide_top(), wide_right() - wide_left(), wide_bottom() - wide_top(), psx(TIME_ATTACK_CLEAR));
         // Untyped Array records [sx, sy, w, h, vx, vy]: gd::Arr<gd::Int>.
         for (const gd::Arr<gd::Int>& part : gd::Arr<gd::Arr<gd::Int>>{
                  {0, 0, 0x80, 0x100, 0x200, 0}, {0x80, 0, 0x80, 0x100, 0x240, 0},
@@ -95,26 +101,36 @@ void ResultView::_subtracted() {
     if (_screen == GameFlow::State::TIME_RESULT) {
         _time_rows(true);
     } else {
-        fill(0, 0xCB, SCREEN().x, 0x2A, psx(0x606060));
+        fill(wide_left(), 0xCB, wide_right() - wide_left(), 0x2A, psx(0x606060));
     }
 }
 
-// FUN_800F18FC's stripes, then the members and the fight grid's boxes.
+// FUN_800F18FC's stripes (native: their own background pass, out to the window's edges in the
+// wide mode).
+void ResultView::_stripes() {
+    if (flow == nullptr || _screen == GameFlow::State::TIME_RESULT || _force_result()) return;
+    gd::Int left = static_cast<gd::Int>(std::floor(wide_left())), right = static_cast<gd::Int>(std::ceil(wide_right()));
+    gd::Int x = ram->s32(ResultScreens::BANNER_BASE) - 0x180;
+    for (gd::Int k = 0; k < 7; ++k) {
+        gd::Int w = ram->u32(BANNER_TILES + 4 * k);
+        gd::Int xx = x;
+        if (widened())
+            while (xx > left - 0x30) xx -= 0x180;
+        while (xx < std::max<gd::Int>(right, 0x170)) {
+            if (xx > std::min<gd::Int>(left, 0) - 0x30)
+                ft4(xx, 0x5F, 0x30, 0x50, w & 0xFF, (w >> 8) & 0xFF, 0x18, 0x28, w >> 16, 0x6E, modulation(psx(0x606060)));
+            xx += 0x180;
+        }
+        x += 0x30;
+    }
+}
+
+// The members and the fight grid's boxes.
 void ResultView::_middle() {
     if (flow == nullptr || _screen == GameFlow::State::TIME_RESULT) return;
     if (_force_result()) {
         _force_portrait();
         return;
-    }
-    gd::Int x = ram->s32(ResultScreens::BANNER_BASE) - 0x180;
-    for (gd::Int k = 0; k < 7; ++k) {
-        gd::Int w = ram->u32(BANNER_TILES + 4 * k);
-        gd::Int xx = x;
-        while (xx < 0x170) {
-            if (xx > -0x30) ft4(xx, 0x5F, 0x30, 0x50, w & 0xFF, (w >> 8) & 0xFF, 0x18, 0x28, w >> 16, 0x6E, modulation(psx(0x606060)));
-            xx += 0x180;
-        }
-        x += 0x30;
     }
     if (_team()) {
         _team_grid();

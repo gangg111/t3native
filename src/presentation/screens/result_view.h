@@ -79,6 +79,7 @@ public:
     void _subtracted();
     // FUN_800F18FC's stripes, then the members and the fight grid's boxes.
     void _middle();
+    void _stripes();
     // FUN_800EE100's colour bars (additive).
     void _added();
     gd::Int _label(gd::Int k);

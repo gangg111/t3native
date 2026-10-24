@@ -27,7 +27,10 @@ void ScreenCanvas::draw(gfx::Canvas& canvas, gfx::Vec2 window) {
         canvas.set_blend(p.blend);
         canvas.set_texel_mask(p.texel_mask);
         gfx::Rect2 clip = p.clip.has_area() ? r(p.clip.position.x, p.clip.position.y, p.clip.size.x, p.clip.size.y) : gfx::Rect2();
-        if (widened_now && !p.background && !clip.has_area()) clip = r(0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y));
+        if (widened_now && !p.background && !clip.has_area()) {
+            gfx::Rect2 a = foreground_area();
+            clip = r(a.position.x, a.position.y, a.size.x, a.size.y);
+        }
         canvas.set_clip(clip);
         p.painter();
     }
@@ -58,6 +61,39 @@ float ScreenCanvas::wide_left() const {
 float ScreenCanvas::wide_right() const {
     if (!widened() || box.size.x <= 0) return static_cast<float>(SCREEN_X);
     return (size.x - box.position.x) * static_cast<float>(SCREEN_X) / box.size.x;
+}
+
+float ScreenCanvas::wide_top() const {
+    if (!widened() || box.size.y <= 0) return 0.0f;
+    return -box.position.y * static_cast<float>(SCREEN_Y) / box.size.y;
+}
+
+float ScreenCanvas::wide_bottom() const {
+    if (!widened() || box.size.y <= 0) return static_cast<float>(SCREEN_Y);
+    return (size.y - box.position.y) * static_cast<float>(SCREEN_Y) / box.size.y;
+}
+
+void ScreenCanvas::image_wide(const gfx::TextureRef& tex) {
+    if (!tex) return;
+    float sx = static_cast<float>(SCREEN_X), sy = static_cast<float>(SCREEN_Y);
+    target->draw_texture_rect(tex, r(0, 0, sx, sy), false, gfx::Color::white());
+    if (!widened()) return;
+    float tw = static_cast<float>(tex->width()), th = static_cast<float>(tex->height());
+    float l = wide_left(), rr = wide_right(), t = wide_top(), b = wide_bottom();
+    // The edge columns over the full height, then the edge rows over the full width (the corners
+    // take the corner texels).
+    if (l < 0) target->draw_texture_rect_region(tex, r(l, 0, -l, sy), gfx::Rect2(0, 0, 1, th), gfx::Color::white());
+    if (rr > sx) target->draw_texture_rect_region(tex, r(sx, 0, rr - sx, sy), gfx::Rect2(tw - 1, 0, 1, th), gfx::Color::white());
+    if (t < 0) {
+        target->draw_texture_rect_region(tex, r(0, t, sx, -t), gfx::Rect2(0, 0, tw, 1), gfx::Color::white());
+        target->draw_texture_rect_region(tex, r(l, t, -l, -t), gfx::Rect2(0, 0, 1, 1), gfx::Color::white());
+        target->draw_texture_rect_region(tex, r(sx, t, rr - sx, -t), gfx::Rect2(tw - 1, 0, 1, 1), gfx::Color::white());
+    }
+    if (b > sy) {
+        target->draw_texture_rect_region(tex, r(0, sy, sx, b - sy), gfx::Rect2(0, th - 1, tw, 1), gfx::Color::white());
+        target->draw_texture_rect_region(tex, r(l, sy, -l, b - sy), gfx::Rect2(0, th - 1, 1, 1), gfx::Color::white());
+        target->draw_texture_rect_region(tex, r(sx, sy, rr - sx, b - sy), gfx::Rect2(tw - 1, th - 1, 1, 1), gfx::Color::white());
+    }
 }
 
 gfx::Vec2 ScreenCanvas::pt(float x, float y) const { return ScreenBox::point(box, SCREEN(), x, y); }

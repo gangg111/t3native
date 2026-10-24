@@ -38,6 +38,8 @@ void VsView::setup(const gd::Ref<HudData>& hud_data, const gd::Ref<GameRam>& gam
     }
     pictures_dir = screens_dir;
     reload_pictures();
+    // Native: the wide mode: _draw (the lightning, the caption bar) is background.
+    wide_background = true;
     // The caption bar's tail: subtracted, then added (VS_BAR_MODES 0x40, 0x20).
     add_pass(gfx::Blend::SUB, [this] { _caption_tail(); });
     add_pass(gfx::Blend::ADD, [this] { _caption_tail(); });
@@ -73,38 +75,54 @@ void VsView::_draw() {
     if (vs == nullptr || vs->objects.is_empty()) return;
     if (!_objects(VsScreen::Kind::BACKGROUND).is_empty()) _background();
     if (vs->slide == 0) {
-        for (const gd::Ref<VsScreen::VsObject>& o : _objects(VsScreen::Kind::CAPTION_BAR))
+        for (const gd::Ref<VsScreen::VsObject>& o : _objects(VsScreen::Kind::CAPTION_BAR)) {
             fill(o->x, o->y, o->dx - 0x6E, 0x24, psx(o->colour));
+            // Native: the wide mode: a bar from the screen's left edge goes on to the window's.
+            if (widened() && o->x <= 0) fill(wide_left(), o->y, o->x - wide_left(), 0x24, psx(o->colour));
+        }
     }
 }
 
 // FUN_80051C9C: the 7 x 6 grid of background cells (a black tile while sliding).
 void VsView::_background() {
     if (vs->slide != 0) return;
-    gd::Int cell = 0;
-    gd::Int v_last = -1;
-    gd::Int y_top = 0x14;
-    for (gd::Int row = 0; row < 7; ++row) {
-        gd::Int va = (v_last + 1) & 0xFF;
-        v_last += 0x20;
-        gd::Int vb = v_last & 0xFF;
-        gd::Int y_bot = ram->u32(ROW_EDGES + 4 * row) >> 16;
-        gd::Int x_left = 0;
-        gd::Int u_left = 0;
-        gd::Int u_last = -1;
-        for (gd::Int col = 0; col < 6; ++col) {
-            gd::Int clut = 0x7D00 | ((cell & 0x30) << 2) | (cell & 0xF);
-            cell += 1;
-            gd::Int x_right = ram->u16(COL_EDGES + 2 * col);
-            gd::Int u_right = (u_last + 0x20) & 0xFF;
-            ft4(x_left, y_top, x_right - x_left, y_bot - y_top, u_left & 0xFF, va, u_right - (u_left & 0xFF) + 1,
-                vb - va + 1, clut, 0xD);
-            u_left = u_last + 0x21;
-            x_left = x_right;
-            u_last += 0x20;
+    // Native: the wide mode clips the picture to the 4:3 box (its last column runs past the screen
+    // into texels that are not part of it, which the mask hid).
+    auto cells = [&]() {
+        gd::Int cell = 0;
+        gd::Int v_last = -1;
+        gd::Int y_top = 0x14;
+        for (gd::Int row = 0; row < 7; ++row) {
+            gd::Int va = (v_last + 1) & 0xFF;
+            v_last += 0x20;
+            gd::Int vb = v_last & 0xFF;
+            gd::Int y_bot = ram->u32(ROW_EDGES + 4 * row) >> 16;
+            gd::Int x_left = 0;
+            gd::Int u_left = 0;
+            gd::Int u_last = -1;
+            for (gd::Int col = 0; col < 6; ++col) {
+                gd::Int clut = 0x7D00 | ((cell & 0x30) << 2) | (cell & 0xF);
+                cell += 1;
+                gd::Int x_right = ram->u16(COL_EDGES + 2 * col);
+                gd::Int u_right = (u_last + 0x20) & 0xFF;
+                float w = static_cast<float>(x_right - x_left), h = static_cast<float>(y_bot - y_top);
+                gd::Int tw = u_right - (u_left & 0xFF) + 1, th = vb - va + 1;
+                ft4(x_left, y_top, w, h, u_left & 0xFF, va, tw, th, clut, 0xD);
+                u_left = u_last + 0x21;
+                x_left = x_right;
+                u_last += 0x20;
+            }
+            y_top = y_bot;
         }
-        y_top = y_bot;
+    };
+    if (!widened()) {
+        cells();
+        return;
     }
+    // The sides stay black (the user's choice: no mirrored lightning); the picture keeps to the box.
+    target->set_clip(r(0, 0, static_cast<float>(SCREEN_X), static_cast<float>(SCREEN_Y)));
+    cells();
+    target->set_clip(gfx::Rect2());
 }
 
 // FUN_80051E74: the caption bar's gradient tail (drawn at rest).
