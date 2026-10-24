@@ -124,13 +124,21 @@ void GameApp::_net_show_page() {
             break;
         }
         case NetPage::SEARCHING: {
+            // The same phone may be found twice, through the router and through Wi-Fi Direct: those
+            // found through Wi-Fi Direct in green, and the footer names the way of the one chosen.
+            size_t offers = _net.offers().size();
             for (const net::NetSession::Offer& o : _net.offers()) page.push_back(o.name);
             for (const Platform::DirectHost& h : Platform::direct_hosts()) page.push_back(h.name);
+            size_t games = page.size();
             if (page.empty()) page.push_back("SEARCHING");
             page.push_back("ENTER ADDRESS");
             std::string note = Platform::direct_note();
-            main_menu_view.footer = note.empty() ? "JOIN GAME" : note;
-            break;
+            size_t at = static_cast<size_t>(std::max<gd::Int>(_net_cursor, 0));
+            std::string way = at < offers ? "VIA ROUTER" : at < games ? "VIA WI-FI DIRECT" : "JOIN GAME";
+            main_menu_view.footer = note.empty() ? way : note;
+            main_menu_view.page_colours.assign(page.size(), WHITE);
+            for (size_t i = offers; i < games; ++i) main_menu_view.page_colours[i] = GREEN;
+            return;
         }
         case NetPage::DIRECT: {
             page = {"CONNECTING", _net_direct_name};
