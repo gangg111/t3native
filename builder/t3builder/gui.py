@@ -217,39 +217,6 @@ class Field:
             self.set(str(chosen))
 
 
-class Switch:
-    """A labelled row of choices (the APK's variant): the chosen one in the accent colour."""
-
-    def __init__(self, parent, row: int, key: str, choices: tuple[str, ...], changed):
-        self.key = key
-        self.choices = choices
-        self.value = choices[0]
-        self.changed = changed
-        self.title = tk.Label(parent, bg=PANEL, fg=TEXT, font=(FONT, 12, "bold"), anchor="w")
-        self.title.grid(row=row, column=0, sticky="w", padx=18, pady=(16, 2))
-        box = tk.Frame(parent, bg=PANEL)
-        box.grid(row=row, column=0, columnspan=2, sticky="e", padx=18, pady=(16, 2))
-        self.buttons = {}
-        for choice in choices:
-            b = tk.Button(box, command=lambda c=choice: self.pick(c), relief="flat", font=(FONT, 11, "bold"),
-                          padx=14, cursor="hand2", activebackground=ACCENT, activeforeground=BG)
-            b.pack(side="left", padx=(6, 0), ipady=3)
-            self.buttons[choice] = b
-        self.retext()
-
-    def pick(self, choice: str) -> None:
-        if choice in self.choices:
-            self.value = choice
-        self.retext()
-        self.changed()
-
-    def retext(self) -> None:
-        self.title.configure(text=t(self.key))
-        for choice, b in self.buttons.items():
-            chosen = choice == self.value
-            b.configure(text=t(f"{self.key}_{choice}"), bg=ACCENT if chosen else FIELD, fg=BG if chosen else TEXT)
-
-
 class Window:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -279,8 +246,7 @@ class Window:
         self.usa = Field(panel, 2, "usa", self.pick_folder, True, check_usa)
         self.arcade = Field(panel, 4, "arcade", self.pick_zip, True, check_arcade)
         self.out = Field(panel, 6, "out", self.pick_out, False)
-        self.variant = Switch(panel, 8, "variant", pipeline.VARIANTS, self.save_settings)
-        tk.Frame(panel, bg=PANEL, height=14).grid(row=9, column=0)
+        tk.Frame(panel, bg=PANEL, height=14).grid(row=8, column=0)
 
         actions = tk.Frame(root, bg=BG)
         actions.pack(fill="x", padx=22, pady=(10, 4))
@@ -322,7 +288,6 @@ class Window:
             label.configure(fg=ACCENT if code == texts.language() else MUTED)
         for field in (self.jp, self.usa, self.arcade, self.out):
             field.retext()
-        self.variant.retext()
         self.build_button.configure(text=t("build"))
         self.stop_button.configure(text=t("stop"))
         self.open_button.configure(text=t("open"))
@@ -359,13 +324,10 @@ class Window:
             getattr(self, name).set(data.get(name, ""))
         if not self.out.value():
             self.out.set(str(pipeline.HOME / "APK"))
-        if data.get("variant") in pipeline.VARIANTS:
-            self.variant.value = data["variant"]
 
     def save_settings(self) -> None:
         data = {name: getattr(self, name).value() for name in ("jp", "usa", "arcade", "out")}
         data["lang"] = texts.language()
-        data["variant"] = self.variant.value
         try:
             SETTINGS.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
         except OSError:
@@ -408,7 +370,7 @@ class Window:
         out = Path(self.out.value() or pipeline.HOME / "APK")
         self.save_settings()
         command = [python_exe(), "-E", "-s", "-u", "-m", "t3builder.pipeline", "--jp", str(jp), "--out", str(out),
-                   "--lang", texts.language(), "--variant", self.variant.value]
+                   "--lang", texts.language()]
         if usa:
             command += ["--usa", str(usa)]
         if arcade:
