@@ -461,7 +461,7 @@ std::string GameSettings::preset() {
         return chosen;
     }
     if (offered.has("desktop_high")) return "desktop_high";
-    return offered.has("mobile") ? std::string("mobile") : offered[0];   // native: mobile_low is listed first
+    return offered[0];
 }
 
 bool GameSettings::touch_enabled() {

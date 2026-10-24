@@ -131,7 +131,6 @@ const gd::Dict<std::string, std::string>& english() {
         t.set("SETTINGS_VALUE_ENGLISH", "English (USA)");
         t.set("SETTINGS_VALUE_JAPANESE", "Japanese release");
         t.set("SETTINGS_VALUE_WEB", "Web");
-        t.set("SETTINGS_VALUE_MOBILE_LOW", "Low");
         t.set("SETTINGS_VALUE_MOBILE", "Standard");
         t.set("SETTINGS_VALUE_MOBILE_HIGH", "High");
         t.set("SETTINGS_VALUE_DESKTOP_LOW", "Low");

@@ -63,6 +63,37 @@ public class GameActivity extends NativeActivity {
     protected void onResume() {
         super.onResume();
         hideSystemBars();
+        preferSixtyMultiple();
+    }
+
+    /**
+     * A display whose refresh is not a multiple of 60 Hz (a Galaxy A22's 90 Hz) shows the game's 60
+     * steps a second unevenly: one frame for one refresh, the next for two (a stutter that looks
+     * like flicker). Such a display is asked for its mode of the same size at a multiple of 60 Hz
+     * (60, or 120); one already at 60 or 120 Hz (a Fold7) keeps its mode.
+     */
+    private void preferSixtyMultiple() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        android.view.Display display = getWindowManager().getDefaultDisplay();
+        android.view.Display.Mode current = display.getMode();
+        if (isSixtyMultiple(current.getRefreshRate())) return;
+        android.view.Display.Mode best = null;
+        for (android.view.Display.Mode m : display.getSupportedModes()) {
+            if (m.getPhysicalWidth() != current.getPhysicalWidth() || m.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+            if (!isSixtyMultiple(m.getRefreshRate())) continue;
+            if (best == null || m.getRefreshRate() > best.getRefreshRate()) best = m;
+        }
+        if (best == null) return;
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        if (params.preferredDisplayModeId == best.getModeId()) return;
+        params.preferredDisplayModeId = best.getModeId();
+        getWindow().setAttributes(params);
+        android.util.Log.i("t3native", "display: " + current.getRefreshRate() + " Hz, asked for " + best.getRefreshRate() + " Hz");
+    }
+
+    private static boolean isSixtyMultiple(float hz) {
+        float k = hz / 60.0f;
+        return Math.abs(k - Math.round(k)) < 0.05f && Math.round(k) >= 1;
     }
 
     @SuppressWarnings("deprecation")
