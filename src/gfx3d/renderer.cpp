@@ -246,7 +246,8 @@ struct Renderer3D::Impl {
         make_final_pass();
     }
 
-    // A full-screen pass's program (one triangle, `uv` 0 ... 1).
+    // A full-screen pass's program (one triangle, `uv` 0 ... 1); 0 when it does not compile or link
+    // (its pass is then left out rather than drawn with no program: garbage on a tiled GPU).
     static unsigned screen_program(const char* fs) {
         const char* vs = "#version 300 es\nout vec2 uv;\nvoid main() {\n"
                          "\tvec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
@@ -272,6 +273,15 @@ struct Renderer3D::Impl {
         glLinkProgram(p);
         glDeleteShader(v);
         glDeleteShader(f);
+        int linked = 0;
+        glGetProgramiv(p, GL_LINK_STATUS, &linked);
+        if (!linked) {
+            char log[2048];
+            glGetProgramInfoLog(p, sizeof log, nullptr, log);
+            Log::error(std::string("gfx3d: a screen pass does not link:\n") + log);
+            glDeleteProgram(p);
+            return 0;
+        }
         return p;
     }
 
@@ -310,12 +320,13 @@ struct Renderer3D::Impl {
             "layout(location = 0) out vec4 colour;\nvoid main() {\n"
             "\tcolour = 0.25 * (texture(source, uv + texel * vec2(-0.5, -0.5)) + texture(source, uv + texel * vec2(0.5, -0.5))"
             " + texture(source, uv + texel * vec2(-0.5, 0.5)) + texture(source, uv + texel * vec2(0.5, 0.5)));\n}\n");
-        // A separable gaussian blur, nine taps along `step`.
+        // A separable gaussian blur, nine taps along `blur_step` (not `step`: GLSL's built-in, which
+        // Mali's compiler refuses to see redeclared, "S0022: Symbol 'step' redeclared"; Adreno took it).
         glow_blur = screen_program(
-            "#version 300 es\nprecision highp float;\nin vec2 uv;\nuniform sampler2D source;\nuniform vec2 step;\n"
+            "#version 300 es\nprecision highp float;\nin vec2 uv;\nuniform sampler2D source;\nuniform vec2 blur_step;\n"
             "layout(location = 0) out vec4 colour;\nconst float w[5] = float[](0.2270270270, 0.1945945946, 0.1216216216, "
             "0.0540540541, 0.0162162162);\nvoid main() {\n\tvec4 c = texture(source, uv) * w[0];\n"
-            "\tfor (int i = 1; i < 5; ++i) c += (texture(source, uv + step * float(i)) + texture(source, uv - step * float(i))) * w[i];\n"
+            "\tfor (int i = 1; i < 5; ++i) c += (texture(source, uv + blur_step * float(i)) + texture(source, uv - blur_step * float(i))) * w[i];\n"
             "\tcolour = c;\n}\n");
         glGenVertexArrays(1, &final_vao);
     }
@@ -390,7 +401,7 @@ struct Renderer3D::Impl {
             }
             glUseProgram(glow_blur);
             glUniform1i(glGetUniformLocation(glow_blur, "source"), 0);
-            int step = glGetUniformLocation(glow_blur, "step");
+            int step = glGetUniformLocation(glow_blur, "blur_step");
             glUniform2f(step, 1.0f / glow_w[k], 0.0f);
             draw_screen(glow_tmp_fbo[k], glow_w[k], glow_h[k], glow_tex[k]);
             glUniform2f(step, 0.0f, 1.0f / glow_h[k]);
@@ -1295,7 +1306,7 @@ void Renderer3D::render(Node3D& root, Camera3D& camera, int width, int height, u
         glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, &colour_only);
     }
     // The glow needs values above 1: only from a float buffer.
-    bool glow = env && env->glow_enabled && g.float_buffer;
+    bool glow = env && env->glow_enabled && g.float_buffer && g.glow_first && g.glow_down && g.glow_blur;
     if (glow) g.make_glow(iw, ih);
     glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
     glViewport(0, 0, width, height);
