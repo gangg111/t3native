@@ -27,6 +27,13 @@ public:
     gd::Int page_cursor = 0;
     std::string footer;
     gd::Int footer_colour = 6;
+    // Native: in the footer's place, side by side, a value (font 1) with a small label above it
+    // (font 0): the host's addresses, each named by its network.
+    struct FooterItem {
+        std::string label, value;
+    };
+    std::vector<FooterItem> footer_items;
+    static constexpr gd::Int LABEL_COLOUR = 5;
 
     void setup(const gd::Ref<HudData>& hud_data, const gfx::TextureRef& title_picture);
     void show_state(const gd::Ref<MainMenu>& main_menu, gd::Int frames);
