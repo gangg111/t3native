@@ -419,7 +419,14 @@ SafeArea safe_area(android_app* app) {
 // panel (a Fold7) is left as it is.
 void hint_frame_rate(ANativeWindow* window) {
     using SetFrameRate = int32_t (*)(ANativeWindow*, float, int8_t);
-    static auto set_frame_rate = reinterpret_cast<SetFrameRate>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRate"));
+    // Looked up in its library: RTLD_DEFAULT does not see it (the A22 gave null).
+    static auto set_frame_rate = [] {
+        for (const char* lib : {"libnativewindow.so", "libandroid.so"}) {
+            if (void* h = dlopen(lib, RTLD_NOW))
+                if (void* f = dlsym(h, "ANativeWindow_setFrameRate")) return reinterpret_cast<SetFrameRate>(f);
+        }
+        return static_cast<SetFrameRate>(nullptr);
+    }();
     JNIEnv* env = game_thread_env();
     if (!set_frame_rate || !env) return;
     jclass c = env->GetObjectClass(g_android->activity->clazz);
