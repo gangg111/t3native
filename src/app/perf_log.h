@@ -1,5 +1,5 @@
 #pragma once
-// Native: the performance log (SYSTEM OPTION > GAME > PERFORMANCE LOG). Every frame adds its game
+// Native: the performance log (SYSTEM OPTION > GAME > DEBUG LOG, off by default). Every frame adds its game
 // thread's time in two parts, `update` (the game's steps and the views they build) and `render`
 // (the GL calls, with whatever the driver waits on in them: a frame's buffer), and its interval
 // from the previous frame; the GPU timer adds the frames' GPU times as they come back. Every

@@ -64,6 +64,8 @@ T3_TEST(settings, sanitized) {
              "Japanese only where the interface can show it");
     t.expect_equal(out.size(), GameSettings::SCHEMA.size() + 1, "every key present, and the key bindings");
     t.expect(same(out.at(GameSettings::KEY_BINDINGS), GameSettings::default_bindings()), "no bindings saved: the defaults");
+    // source: the user's choice (2026-10-24): DEBUG LOG off unless chosen
+    t.expect(same(out.at("perf_log"), false), "the debug log off by default");
 }
 
 T3_TEST(settings, key_bindings_sanitized) {

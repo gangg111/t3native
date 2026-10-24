@@ -125,7 +125,7 @@ T3_TEST(system_options, save_data_in_place_of_the_card) {
     t.expect_equal(o.shown("NO TEKKEN3 FILE!"), std::string("NO SAVE DATA!"), "the missing file's message");
     std::vector<std::string> keys;
     for (const auto& e : f.system.entries(SystemOptions::GAME)) keys.push_back(e.key);
-    // source: by hand: GAME lists ORIGINAL BUGS, GAME TEXTS, PERFORMANCE LOG, EXIT (no MEMORY CARD slot)
+    // source: by hand: GAME lists ORIGINAL BUGS, GAME TEXTS, DEBUG LOG, EXIT (no MEMORY CARD slot)
     t.expect(keys == std::vector<std::string>{"gameplay_fixes", "game_texts", "perf_log", ""}, "GAME has no card slot");
     Fixture off(false);
     t.expect_equal(off.flow->options->item_label(0, 4), std::string("MEMORY CARD"), "off: the original's name");
