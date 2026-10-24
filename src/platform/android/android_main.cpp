@@ -5,6 +5,7 @@
 #ifdef __ANDROID__
 
 #include <EGL/egl.h>
+#include <dlfcn.h>
 #include <aaudio/AAudio.h>
 #include <android/asset_manager.h>
 #include <android/configuration.h>
@@ -411,9 +412,32 @@ SafeArea safe_area(android_app* app) {
     return area;
 }
 
+// A panel not at a multiple of 60 Hz (a Galaxy A22's 90 Hz) shows the game's 60 steps a second
+// unevenly, one frame for one refresh and the next for two: a stutter that reads as flicker. The
+// window says its frames come at 60 a second (ANativeWindow_setFrameRate, Android 11+, looked up at
+// run time: the APK starts on 8.0), and the system moves such a panel to 60 Hz. A 60 or 120 Hz
+// panel (a Fold7) is left as it is.
+void hint_frame_rate(ANativeWindow* window) {
+    using SetFrameRate = int32_t (*)(ANativeWindow*, float, int8_t);
+    static auto set_frame_rate = reinterpret_cast<SetFrameRate>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRate"));
+    JNIEnv* env = game_thread_env();
+    if (!set_frame_rate || !env) return;
+    jclass c = env->GetObjectClass(g_android->activity->clazz);
+    jmethodID m = c ? env->GetMethodID(c, "displayRefresh", "()F") : nullptr;
+    if (env->ExceptionCheck()) env->ExceptionClear(), m = nullptr;
+    if (!m) return;
+    float hz = env->CallFloatMethod(g_android->activity->clazz, m);
+    if (env->ExceptionCheck()) env->ExceptionClear(), hz = 0;
+    float k = hz / 60.0f;
+    if (hz <= 0 || (std::fabs(k - std::round(k)) < 0.05f && std::round(k) >= 1)) return;
+    int32_t r = set_frame_rate(window, 60.0f, 1 /* ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_FIXED_SOURCE */);
+    Log::info("display: " + std::to_string(hz) + " Hz, the window asks for 60 (" + std::to_string(r) + ")");
+}
+
 void on_command(android_app* app, int32_t cmd) {
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
+            if (app->window) hint_frame_rate(app->window);
             if (app->window && !egl_attach(app->window)) {
                 Log::error("android: no EGL surface (error " + std::to_string(eglGetError()) + ")");
             } else if (app->window) {

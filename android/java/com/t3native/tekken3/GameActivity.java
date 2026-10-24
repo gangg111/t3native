@@ -63,49 +63,11 @@ public class GameActivity extends NativeActivity {
     protected void onResume() {
         super.onResume();
         hideSystemBars();
-        preferSixtyMultiple();
     }
 
-    /**
-     * A display whose refresh is not a multiple of 60 Hz (a Galaxy A22's 90 Hz) shows the game's 60
-     * steps a second unevenly: one frame for one refresh, the next for two (a stutter that looks
-     * like flicker). Such a display is asked for a refresh of a multiple of 60 Hz (60, or 120): a
-     * mode of the same size, or (Android 12+) its own mode's alternative rate, which is how the
-     * A22 offers its 60 Hz (one mode listed, 90 Hz with 60 Hz as its alternative). One already at
-     * 60 or 120 Hz (a Fold7) keeps its refresh.
-     */
-    private void preferSixtyMultiple() {
-        if (Build.VERSION.SDK_INT < 23) return;
-        android.view.Display display = getWindowManager().getDefaultDisplay();
-        android.view.Display.Mode current = display.getMode();
-        float hz = display.getRefreshRate();
-        if (isSixtyMultiple(hz)) return;
-        int modeId = 0;
-        float rate = 0;
-        for (android.view.Display.Mode m : display.getSupportedModes()) {
-            if (m.getPhysicalWidth() != current.getPhysicalWidth() || m.getPhysicalHeight() != current.getPhysicalHeight()) continue;
-            if (isSixtyMultiple(m.getRefreshRate()) && m.getRefreshRate() > rate) {
-                rate = m.getRefreshRate();
-                modeId = m.getModeId();
-            }
-        }
-        if (rate == 0 && Build.VERSION.SDK_INT >= 31) {
-            for (float alt : current.getAlternativeRefreshRates()) {
-                if (isSixtyMultiple(alt) && alt > rate) rate = alt;
-            }
-        }
-        if (rate == 0) return;
-        WindowManager.LayoutParams params = getWindow().getAttributes();
-        if (params.preferredRefreshRate == rate && params.preferredDisplayModeId == modeId) return;
-        params.preferredDisplayModeId = modeId;   // 0: any mode, the rate below decides
-        params.preferredRefreshRate = rate;
-        getWindow().setAttributes(params);
-        android.util.Log.i("t3native", "display: " + hz + " Hz, asked for " + rate + " Hz");
-    }
-
-    private static boolean isSixtyMultiple(float hz) {
-        float k = hz / 60.0f;
-        return Math.abs(k - Math.round(k)) < 0.05f && Math.round(k) >= 1;
+    /** The refresh the panel runs at (the game thread: android_main's frame rate hint). */
+    public float displayRefresh() {
+        return getWindowManager().getDefaultDisplay().getRefreshRate();
     }
 
     @SuppressWarnings("deprecation")
