@@ -34,6 +34,11 @@ bool GpuTimer::_ready() {
 #ifdef __ANDROID__
     const char* ext = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
     if (ext == nullptr || std::strstr(ext, "GL_EXT_disjoint_timer_query") == nullptr) return false;
+    // Not on Mali: a Galaxy A22's G52 (driver r26p0) showed the timed frames black, two of three
+    // (the whole frame, then each pass, then the shadow's parts in turn): measured from a screen
+    // recording, 396 of 593 frames black with the queries, none between scenes without them.
+    const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    if (renderer != nullptr && std::strstr(renderer, "Mali") != nullptr) return false;
     if (g_result == nullptr) g_result = reinterpret_cast<QueryObjectUi64>(eglGetProcAddress("glGetQueryObjectui64vEXT"));
     if (g_result == nullptr) return false;
     glGenQueries(RING, ids_);
