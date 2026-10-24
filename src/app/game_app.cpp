@@ -1485,6 +1485,16 @@ void GameApp::_render() {
         renderer3d->render(*scene, *camera, width_, height_, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width_, height_);
+        // Native: the GPU, the preset and the scene's buffers in the performance log, once each
+        // time they change (a phone whose picture breaks shows what it rendered with).
+        std::string buffers = renderer3d->buffers();
+        if (buffers != _perf_buffers) {
+            _perf_buffers = buffers;
+            const char* gpu = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+            const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+            Platform::perf_line(std::string("gfx ") + (gpu ? gpu : "?") + ", " + (version ? version : "?") + ", preset " +
+                                GameSettings::read_preset("?") + ", " + buffers);
+        }
     }
     gfx::Vec2 window(static_cast<float>(width_), static_cast<float>(height_));
     _gpu_pass(PerfLog::GPU_2D);

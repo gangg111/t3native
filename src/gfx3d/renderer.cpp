@@ -152,6 +152,7 @@ struct Renderer3D::Impl {
     // and depth stay in the tile memory, the texture gets the resolved colour, no blit). msaa_fbo
     // then renders straight into resolve_tex and there is no msaa_color nor resolve_fbo.
     bool in_tile_resolve = false;
+    std::string described;   // Renderer3D::buffers()
     unsigned shadow_fbo = 0, shadow_tex = 0;
     int shadow_size = 0;
     unsigned final_program = 0, final_vao = 0;
@@ -439,8 +440,9 @@ struct Renderer3D::Impl {
                 ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
                 if (ok) {
                     float_buffer = format == GL_RGBA16F;
-                    Log::info(std::string("gfx3d: ") + (format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") +
-                              " x" + std::to_string(samples) + ", " + std::to_string(w) + "x" + std::to_string(h));
+                    described = std::string(format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") + " x" +
+                                std::to_string(samples) + ", " + std::to_string(w) + "x" + std::to_string(h);
+                    Log::info("gfx3d: " + described);
                     return;
                 }
                 glDeleteFramebuffers(1, &resolve_fbo), glDeleteTextures(1, &resolve_tex);
@@ -493,8 +495,9 @@ struct Renderer3D::Impl {
         if (glGetError() == GL_NO_ERROR && glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
             in_tile_resolve = true;
             float_buffer = format == GL_RGBA16F;
-            Log::info(std::string("gfx3d: ") + (format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") +
-                      " x" + std::to_string(samples) + " resolved in the tiles, " + std::to_string(w) + "x" + std::to_string(h));
+            described = std::string(format == GL_RGBA16F ? "RGBA16F" : format == GL_RGB10_A2 ? "RGB10_A2" : "RGBA8") + " x" +
+                        std::to_string(samples) + " resolved in the tiles, " + std::to_string(w) + "x" + std::to_string(h);
+            Log::info("gfx3d: " + described);
             return true;
         }
         glDeleteFramebuffers(1, &msaa_fbo), glDeleteRenderbuffers(1, &msaa_depth), glDeleteTextures(1, &resolve_tex);
@@ -556,6 +559,8 @@ struct Renderer3D::Impl {
 
 Renderer3D::Renderer3D(RenderSettings settings) : impl_(std::make_unique<Impl>()), settings_(settings) {}
 Renderer3D::~Renderer3D() = default;
+
+std::string Renderer3D::buffers() const { return impl_->described; }
 
 void Renderer3D::graphics_lost() {
     ++gl_generation();
