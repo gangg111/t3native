@@ -442,7 +442,10 @@ std::unique_ptr<Program> build(GdShader shader, Pass pass, const std::string& na
     p->name = name + PASS_NAMES[static_cast<int>(pass)];
     p->generation = gl_generation();
     p->id = glCreateProgram();
-    std::string cached = cache_path(glsl);
+    // Native: a capture program is always compiled. Mali (a Galaxy A22's G52, driver r26p0) takes
+    // one back from its binary and links it, but its transform feedback then writes nothing (the
+    // fighters drawn from zeroed vertices: gone), with no error; compiled it captures every vertex.
+    std::string cached = pass == Pass::CAPTURE ? std::string() : cache_path(glsl);
     int ok = load_binary(p->id, cached) ? 1 : 0;
     if (!ok) {
         // A program refused from its binary is made again from its sources.
