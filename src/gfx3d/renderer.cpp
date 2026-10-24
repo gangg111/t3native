@@ -483,7 +483,9 @@ struct Renderer3D::Impl {
                 if (texture_ms && storage_ms) state = 1;
             }
         }
-        if (state < 0) return false;
+        // One sample needs no resolve: Mali (a Galaxy A22's G52) draws black with flashes through the
+        // extension at one sample (the Low preset); the plain buffers below serve it.
+        if (state < 0 || samples < 2) return false;
         int tile_samples = 1;
         glGetIntegerv(0x8D57 /* GL_MAX_SAMPLES_EXT */, &tile_samples);
         samples = std::max(1, std::min(samples, tile_samples));
