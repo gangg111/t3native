@@ -76,7 +76,10 @@ public class GameActivity extends NativeActivity {
         if (Build.VERSION.SDK_INT < 23) return;
         android.view.Display display = getWindowManager().getDefaultDisplay();
         android.view.Display.Mode current = display.getMode();
-        if (isSixtyMultiple(current.getRefreshRate())) return;
+        // The refresh the panel runs at: getMode() may name the default mode (60 Hz on the A22)
+        // while the panel runs its 90 Hz alternative.
+        float hz = display.getRefreshRate();
+        if (isSixtyMultiple(hz)) return;
         android.view.Display.Mode best = null;
         for (android.view.Display.Mode m : display.getSupportedModes()) {
             if (m.getPhysicalWidth() != current.getPhysicalWidth() || m.getPhysicalHeight() != current.getPhysicalHeight()) continue;
@@ -87,8 +90,9 @@ public class GameActivity extends NativeActivity {
         WindowManager.LayoutParams params = getWindow().getAttributes();
         if (params.preferredDisplayModeId == best.getModeId()) return;
         params.preferredDisplayModeId = best.getModeId();
+        params.preferredRefreshRate = best.getRefreshRate();
         getWindow().setAttributes(params);
-        android.util.Log.i("t3native", "display: " + current.getRefreshRate() + " Hz, asked for " + best.getRefreshRate() + " Hz");
+        android.util.Log.i("t3native", "display: " + hz + " Hz, asked for " + best.getRefreshRate() + " Hz");
     }
 
     private static boolean isSixtyMultiple(float hz) {
