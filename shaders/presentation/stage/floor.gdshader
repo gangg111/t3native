@@ -56,8 +56,8 @@ void fragment() {
 	} else if (shade != 0) {
 		float beyond = max(-VERTEX.z * units_per_metre - camera_distance, 0.0);
 		int i = min(int(floor(beyond * float(fade_scale) / 65536.0)), 1023);
-		int step = int(round(texelFetch(fade_table, ivec2(i, 0), 0).r * 255.0));
-		float level = clamp(128.0 + floor(float(step * shade) / 128.0), 0.0, 254.0);
+		int fade_step = int(round(texelFetch(fade_table, ivec2(i, 0), 0).r * 255.0));
+		float level = clamp(128.0 + floor(float(fade_step * shade) / 128.0), 0.0, 254.0);
 		ALBEDO *= level / 128.0;
 	}
 	ROUGHNESS = 0.9;
