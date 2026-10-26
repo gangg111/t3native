@@ -5,7 +5,8 @@ translated file for file from its GDScript `remake/core` and proven bit-exact by
 traces the remake is tested with (the original game's code run in a MIPS + GTE CPU harness).
 
 Derived from Tekken3Remake, licensed under the PolyForm Noncommercial License 1.0.0
-(see `LICENSE.md`, copied from the source project). Noncommercial use only.
+(see `LICENSE.md`, copied from the source project). Noncommercial use only. Tekken is a trademark
+of Bandai Namco Entertainment; this project is not affiliated with it.
 
 No game data is included. Assets come from your own disc through the remake's converter
 (`tools/remake_import/convert.py`) into `remake/imported/`; traces from
