@@ -378,7 +378,7 @@ void GameApp::_net_begin() {
     flow->guest_costumes = static_cast<gd::Int>(s.guest.costumes);
     flow->options->system_option = false;   // the settings stay as they are for the session
     SessionLog::put_bytes(flow->progress->bytes, s.progress);
-    flow->goto_transition(GameFlow::State::MENU);
+    _skip_boot();
     _map_blocks();
     _fight_loads = flow->sim->loads;
     _fight_view_due = false;
@@ -458,6 +458,14 @@ void GameApp::_net_end(net::NetSession::Reason why) {
     }
 }
 
+// A new flow straight to the main menu. The boot (GameFlow::_boot) it skips marks no mode overlay
+// as loaded; without that the marker reads 0, VS mode's arcade.ovl, which then never loads (its
+// handicap bars drew black, its record colours grey).
+void GameApp::_skip_boot() {
+    flow->region->loaded_mode_overlay = 0xFF;
+    flow->goto_transition(GameFlow::State::MENU);
+}
+
 // The guest's own game again: a new flow with its card's progress at the main menu.
 void GameApp::_net_local_game() {
     seed = new_seed();
@@ -465,7 +473,7 @@ void GameApp::_net_local_game() {
     flow = _make_flow(seed, rule_set, _net_movies);
     card->load_into(flow->progress);
     _apply_rules();
-    flow->goto_transition(GameFlow::State::MENU);
+    _skip_boot();
     _map_blocks();
     _fight_loads = flow->sim->loads;
     _fight_view_due = false;

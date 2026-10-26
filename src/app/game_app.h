@@ -336,6 +336,7 @@ private:
     void _net_begin();
     void _net_end(net::NetSession::Reason why);
     void _net_local_game();
+    void _skip_boot();
     bool _net_guest_live() const;
     void _net_host_tick();
     void _net_guest_tick();
