@@ -3,6 +3,7 @@
 Input: the user's own dumps (skipped where missing) and small files made here."""
 import sys
 import zipfile
+import os
 from pathlib import Path
 
 import pytest
@@ -11,9 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "builder"))
 from t3builder import gui, identify  # noqa: E402
 
-JP = Path("D:/Tekken 3/japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue")
-USA = Path("D:/Tekken 3/dump/Tekken 3 (USA).cue")
-ARCADE = Path("D:/Tekken 3/_arcade/tekken3.zip")
+WORKSPACE = Path(os.environ.get("T3_WORKSPACE", Path(__file__).resolve().parents[3]))
+JP = WORKSPACE / "japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"
+USA = WORKSPACE / "dump/Tekken 3 (USA).cue"
+ARCADE = WORKSPACE / "_arcade/tekken3.zip"
 HAVE_DISCS = JP.is_file() and USA.is_file()
 
 

@@ -139,7 +139,7 @@ def compare(gd: dict, cpp: dict) -> list[str]:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--remake", type=Path, default=Path(r"D:\Tekken 3\Tekken3Remake\remake"))
+    p.add_argument("--remake", type=Path, default=Path(__file__).resolve().parents[2] / "Tekken3Remake/remake")
     p.add_argument("--src", type=Path, default=Path(__file__).resolve().parents[1] / "src")
     p.add_argument("paths", nargs="*")
     a = p.parse_args()

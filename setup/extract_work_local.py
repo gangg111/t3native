@@ -7,17 +7,19 @@ Writes work/jp_rev1 and work/usa exactly like extract_work.write_release.
 import logging
 import re
 import sys
+import os
 from pathlib import Path
 
-REPO = Path(r"D:\Tekken 3\Tekken3Remake")
+WORKSPACE = Path(os.environ.get("T3_WORKSPACE", Path(__file__).resolve().parents[2]))
+REPO = WORKSPACE / "Tekken3Remake"
 sys.path.insert(0, str(REPO / "tools" / "research"))
 
 from compare_bns import JAPAN, USA, read_records  # noqa: E402
 from extract_work import read_exe, write_release  # noqa: E402
 
 DISCS = {
-    "jp_rev1": (Path(r"D:\Tekken 3\japan rev.1 dump\Tekken 3 (Japan) (Rev 1) (Track 1).bin"), JAPAN),
-    "usa": (Path(r"D:\Tekken 3\dump\Tekken 3 (USA) (Track 1).bin"), USA),
+    "jp_rev1": (WORKSPACE / "japan rev.1 dump/Tekken 3 (Japan) (Rev 1) (Track 1).bin", JAPAN),
+    "usa": (WORKSPACE / "dump/Tekken 3 (USA) (Track 1).bin", USA),
 }
 
 

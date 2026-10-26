@@ -128,7 +128,7 @@ private:
 // remake/dev/trace_files.gd: where the golden traces are (`work/traces/`, git-ignored), and the
 // source repository root two levels up (tools/ghidra/fighter_fields.tsv lives there).
 struct TraceFiles {
-    static inline std::string directory = "D:/Tekken 3/Tekken3Remake/work/traces";
+    static inline std::string directory = T3_WORKSPACE "/Tekken3Remake/work/traces";
     static std::string path(const std::string& file);
 };
 std::string source_root();

@@ -1,6 +1,6 @@
 ### Translation rules: GDScript (remake/) to C++ (t3native/)
 
-The GDScript in `D:\Tekken 3\Tekken3Remake\remake` is proven bit-exact against the original game.
+The GDScript in `Tekken3Remake/remake` (next to this repository) is proven bit-exact against the original game.
 The C++ must compute exactly the same thing. **Translate, never reinterpret.** Same order of
 statements, same names, same comments (`##` becomes `//`). If something cannot be translated
 mechanically, keep the closest literal form and list it in your report.
@@ -135,5 +135,5 @@ formatting `"%d" % x` becomes concatenation with `gd::str`.
 Do not edit files outside your assignment, `src/gd/*`, `RULES.md` or `CMakeLists.txt`. If the
 runtime lacks something you need, write it locally in your `.cpp` and report it. Do not build
 the project; check your files with
-`g++ -std=c++20 -fwrapv -fsyntax-only -I"D:/Tekken 3/t3native/src" <file.cpp>` once the headers they
+`g++ -std=c++20 -fwrapv -fsyntax-only -Isrc <file.cpp>` once the headers they
 include exist.

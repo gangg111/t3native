@@ -19,7 +19,7 @@ std::vector<Test>& registry() {
     static std::vector<Test> tests;
     return tests;
 }
-Paths g_paths{"D:/Tekken 3/Tekken3Remake/remake/imported", "D:/Tekken 3/Tekken3Remake/work/traces"};
+Paths g_paths{T3_WORKSPACE "/Tekken3Remake/remake/imported", T3_WORKSPACE "/Tekken3Remake/work/traces"};
 }  // namespace
 
 const Paths& paths() { return g_paths; }

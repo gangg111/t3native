@@ -59,7 +59,7 @@ T3_TEST(png, sha256_known_vector) {
 }
 
 T3_TEST(png, decodes_every_converted_picture_like_pillow) {
-    std::string ref = "D:/Tekken 3/_tools/tmp/png_digests.tsv";
+    std::string ref = T3_WORKSPACE "/_tools/tmp/png_digests.tsv";
     if (!t.require(ref, "run tools/png_digests.py <imported> " + ref + " first")) return;
     std::istringstream lines(gd::read_file(ref).get_string_from_utf8());
     std::string line;

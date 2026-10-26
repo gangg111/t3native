@@ -29,7 +29,8 @@ BUILD_TOOLS = SDK / "build-tools/36.0.0"
 PLATFORM_JAR = SDK / "platforms/android-35/android.jar"
 NDK = SDK / "ndk/26.1.10909125"
 STRIP = NDK / "toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe"
-REMAKE = Path(os.environ.get("T3_REMAKE", "D:/Tekken 3/Tekken3Remake/remake"))
+WORKSPACE = Path(os.environ.get("T3_WORKSPACE", Path(__file__).resolve().parents[2]))
+REMAKE = Path(os.environ.get("T3_REMAKE", WORKSPACE / "Tekken3Remake/remake"))
 KEYSTORE = Path.home() / ".android/debug.keystore"
 # Android Studio's JetBrains Runtime (JDK 21): the system Java is 8.
 JDK = Path(os.environ.get("T3_JDK", "C:/Program Files/Android/Android Studio/jbr"))

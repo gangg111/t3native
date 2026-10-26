@@ -6,8 +6,8 @@
 namespace t3 {
 
 struct HostOptions {
-    std::string data_root = "D:/Tekken 3/Tekken3Remake/remake/imported";
-    std::string user_dir = "D:/Tekken 3/_tools/host_user";
+    std::string data_root = T3_WORKSPACE "/Tekken3Remake/remake/imported";
+    std::string user_dir = T3_WORKSPACE "/_tools/host_user";
     std::string screenshot;      // --screenshot FILE.png: save that frame and quit
     int frames = 1;              // --frames N
     int width = 1280, height = 720;

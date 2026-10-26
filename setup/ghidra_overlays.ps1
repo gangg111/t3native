@@ -2,12 +2,13 @@
 # each overlay's own range with RefunctionRange.java and exports annotations, COP2 sites and C.
 # -Reprocess: programs already imported; only rebuild the ranges and re-export.
 param([switch]$Reprocess)
+$ws = if ($env:T3_WORKSPACE) { $env:T3_WORKSPACE } else { (Resolve-Path "$PSScriptRoot\..\..").Path }
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-$env:TMP = "D:\Tekken 3\_tools\tmp"; $env:TEMP = $env:TMP
-$w = "D:\Tekken 3\Tekken3Remake\work"
-$t = "D:\Tekken 3\Tekken3Remake\tools\ghidra"
-$ah = "D:\Tekken 3\_tools\ghidra_12.1.4_PUBLIC\support\analyzeHeadless.bat"
-$log = "D:\Tekken 3\_tools\ghidra_overlays.log"
+$env:TMP = "$ws\_tools\tmp"; $env:TEMP = $env:TMP
+$w = "$ws\Tekken3Remake\work"
+$t = "$ws\Tekken3Remake\tools\ghidra"
+$ah = "$ws\_tools\ghidra_12.1.4_PUBLIC\support\analyzeHeadless.bat"
+$log = "$ws\_tools\ghidra_overlays.log"
 $mode = @("arcade", "practice", "force", "volley")
 $seeds = @{}
 foreach ($line in Get-Content "$t\overlay_seeds.txt") {

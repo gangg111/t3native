@@ -67,7 +67,7 @@ class Layout:
             return Layout(root / "remake", root / "t3native/tools", root / "template", root / "runtime/ffmpeg",
                           Path(os.environ.get("T3B_WORK", root / "work")), HOME / KEY_FILE)
         repo = APP_ROOT.parent                              # builder/ in the t3native checkout
-        return Layout(Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake")), repo / "tools",
+        return Layout(Path(os.environ.get("T3_REMAKE_ROOT", repo.parent / "Tekken3Remake")), repo / "tools",
                       repo / "build/builder/template", None, repo / "build/builder/work",
                       repo / "build/builder/work/signing_key.json")
 

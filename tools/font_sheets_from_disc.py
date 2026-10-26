@@ -18,8 +18,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-REMAKE = Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake"))
-DISC = Path(os.environ.get("T3_DISC", "D:/Tekken 3/japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"))
+WORKSPACE = Path(os.environ.get("T3_WORKSPACE", Path(__file__).resolve().parents[2]))
+REMAKE = Path(os.environ.get("T3_REMAKE_ROOT", WORKSPACE / "Tekken3Remake"))
+DISC = Path(os.environ.get("T3_DISC", WORKSPACE / "japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"))
 FIRST_CHAR = 0x20
 LAST_CHAR = 0x7F
 COLUMNS = 16

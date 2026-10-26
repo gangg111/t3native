@@ -25,8 +25,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-REMAKE = Path(os.environ.get("T3_REMAKE_ROOT", "D:/Tekken 3/Tekken3Remake"))
-DISC = Path(os.environ.get("T3_DISC", "D:/Tekken 3/japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"))
+WORKSPACE = Path(os.environ.get("T3_WORKSPACE", Path(__file__).resolve().parents[2]))
+REMAKE = Path(os.environ.get("T3_REMAKE_ROOT", WORKSPACE / "Tekken3Remake"))
+DISC = Path(os.environ.get("T3_DISC", WORKSPACE / "japan rev.1 dump/Tekken 3 (Japan) (Rev 1).cue"))
 # mpeg1video -q:v (1 best ... 31 worst): both at the best, the user wants the movies at their
 # highest quality on the phone too (title_0: 1 = 30.6 MB, 50.8 dB PSNR against the disc's frames;
 # 5 = 7.9 MB, 41.7 dB). 1 needs -qmin 1, whose default of 2 raises it silently.

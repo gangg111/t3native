@@ -9,6 +9,10 @@ endif()
 
 # -fwrapv: signed overflow wraps, as int64 arithmetic does in Godot's GDScript VM.
 add_compile_options(-fwrapv -Wall -Wextra)
+# The folder holding t3native, Tekken3Remake and _tools: the host's and the tests' default paths.
+get_filename_component(T3_WORKSPACE_DEFAULT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+set(T3_WORKSPACE ${T3_WORKSPACE_DEFAULT} CACHE PATH "Folder holding Tekken3Remake and _tools")
+add_compile_definitions(T3_WORKSPACE="${T3_WORKSPACE}")
 if(ANDROID)
   # Android 15+ devices with 16 KB pages refuse ELF segments aligned to 4 KB.
   add_link_options(-Wl,-z,max-page-size=16384)
