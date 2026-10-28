@@ -21,7 +21,7 @@ Po polsku: [docs/PORADNIK.md](docs/PORADNIK.md).
 1. **Dump the PlayStation disc** as BIN/CUE (not ISO, it loses the music and movies), for
    example with ImgBurn: "Create image file from disc". Required: Tekken 3 (Japan), SLPS-01300.
    Optional: Tekken 3 (USA), SLUS-00402, for the English texts.
-2. **Optional: dump the arcade.** Read the ROM chips of your Tekken 3 arcade board (Namco System 12)
+2. **Dump the arcade.** Read the ROM chips of your Tekken 3 arcade board (Namco System 12)
    with an EPROM programmer and save them as MAME's set
    `tekken3.zip`. It adds the arcade's stages and character models.
 3. **Build.** Run `Tekken3Builder.exe` from the
