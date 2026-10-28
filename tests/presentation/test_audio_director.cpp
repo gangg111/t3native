@@ -141,6 +141,22 @@ T3_TEST(audio_director, the_current_track_is_not_restarted) {
     director.stop_all();
 }
 
+// Native: stop_all (LOAD STATE, a network session) forgets the track too: the loaded state's
+// MusicPlay of the same fight's track starts it again instead of leaving the music silent.
+T3_TEST(audio_director, stop_all_forgets_the_track) {
+    if (!t.require(t3test::imported("music/music.json"), "no music group")) return;
+    Mixer mixer;
+    AudioDirector director(&mixer, t3test::imported(""));
+    director._ready();
+    gd::Int track = std::stoll(director.tracks.members()[0].first);
+    director.play_music(track);
+    director.stop_all();
+    t.expect(!director.music->is_playing(), "stopped");
+    director.play_music(track);
+    t.expect(director.music->is_playing(), "the same track starts again after stop_all");
+    director.stop_all();
+}
+
 // Native: MusicSetVolume's fade (a Tween in Godot) reaches its level after `frames` / 60 seconds.
 T3_TEST(audio_director, the_music_fade_takes_its_frames) {
     Mixer mixer;

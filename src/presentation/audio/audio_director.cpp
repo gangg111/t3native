@@ -189,9 +189,10 @@ void AudioDirector::_apply_music_volume() {
 }
 
 // Stops the music and every sound (before quitting: the audio server releases a playback on
-// its next mix, so a stream still playing at exit is reported as leaked).
+// its next mix, so a stream still playing at exit is reported as leaked). The track is forgotten
+// as on MUSIC_STOP: LOAD STATE's MusicPlay of the same fight's track must start it again.
 void AudioDirector::stop_all() {
-    music->stop();
+    play_track(-1, _version);
     for (const gd::Ref<AudioStreamPlayer>& p : voices) {
         p->stop();
     }
