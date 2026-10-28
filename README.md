@@ -4,6 +4,8 @@ A native Android (C++ NDK) port of [n0madic/Tekken3Remake](https://github.com/n0
 translated file for file from its GDScript `remake/core` and proven bit-exact by the same golden
 traces the remake is tested with (the original game's code run in a MIPS + GTE CPU harness).
 
+[![I Ported Tekken 3 to Android: No Emulator, 120 FPS](https://img.youtube.com/vi/MYBpfyi-2vo/maxresdefault.jpg)](https://www.youtube.com/watch?v=MYBpfyi-2vo)
+
 Derived from Tekken3Remake, licensed under the PolyForm Noncommercial License 1.0.0
 (see `LICENSE.md`, copied from the source project). Noncommercial use only. Tekken is a trademark
 of Bandai Namco Entertainment; this project is not affiliated with it.
