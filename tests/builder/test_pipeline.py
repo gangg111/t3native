@@ -74,3 +74,14 @@ def test_icon_crops_the_logo(tmp_path):
     assert icon.size == (192, 192)
     assert icon.getpixel((96, 96))[0] > 150          # the logo in the middle
     assert icon.getpixel((96, 10)) == (0, 0, 0)      # black above it (the 50 px band above, scaled)
+
+
+def test_polish_progress_is_utf8_on_a_pipe_under_E(tmp_path):
+    # source: the window runs "python -E -s -u -m t3builder.pipeline" and reads the pipe as UTF-8 (gui.py);
+    # before the fix the step came out in cp1250 ("p\xb3yty"), a missing disc only makes it stop early
+    import subprocess
+    cmd = [sys.executable, "-E", "-s", "-u", "-m", "t3builder.pipeline", "--jp", str(tmp_path / "none.cue"),
+           "--out", str(tmp_path), "--lang", "pl"]
+    out = subprocess.run(cmd, cwd=ROOT / "builder", stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
+    assert "Konwersja płyty".encode("utf-8") in out
+    assert "BŁĄD".encode("utf-8") in out

@@ -210,6 +210,9 @@ def build(jp: Path, usa: Path | None, arcade: Path | None, out_dir: Path, layout
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The window and the launcher's log read UTF-8, and -E ignores PYTHONIOENCODING, so the pipe
+    # would otherwise be in the ANSI code page (cp1250).
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--jp", type=Path, required=True, help="the Japanese disc image (.cue, .ecm, .bin, .iso)")
